@@ -6,6 +6,7 @@ import os
 import copy
 import datetime
 import json
+import traceback
 
 
 def smart_load_workbook(file_path):
@@ -149,11 +150,8 @@ dict_of_reg_value_CR = {
 
 def main_func(table_name):
     short_table_name = table_name.split('\\')[-1]
-    print(f'{short_table_name} starts.__________')
+    print(f'\n>>> Обработка файла: {short_table_name}')
     warning = 0
-    letter_number = {1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E', 6: 'F', 7: 'G',
-                     8: 'H', 9: 'I', 10: 'J', 11: 'K', 12: 'L', 13: 'M',
-                     14: 'N', 15: 'O'}
     wb = smart_load_workbook(table_name)
     ws = wb.worksheets[0]
     for sheet in wb.worksheets:
@@ -168,10 +166,21 @@ def main_func(table_name):
     last_cell = list(cells.keys())[-1]
     first_cell = first_cell_def(cells)
 
-    filename_lower = short_table_name.lower()
+    # --- НОВАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ ТИПА ДОКУМЕНТА ПО СОДЕРЖИМОМУ ---
+    text_dump = " ".join([str(cells[k]).lower() for k in cells if cells[k]])
 
-    # Изменен порядок проверок: сначала ищем более специфичные CR.D- и FCR.D
-    if 'cr.d-' in filename_lower or 'fcr.d' in filename_lower:
+    if 'cr.d' in text_dump or 'fcr.d' in text_dump or 'impact on tdd' in text_dump:
+        doc_mode = 'CRD'
+        print("    Определен тип: CR.D")
+    elif 'field change request' in text_dump or 'fcr' in text_dump:
+        doc_mode = 'FCR'
+        print("    Определен тип: FCR")
+    else:
+        doc_mode = 'CR'
+        print("    Определен тип: CR")
+    # -------------------------------------------------------------
+
+    if doc_mode == 'CRD':
         dict_of_reg_value_local = dict_of_reg_value_CRD.copy()
         CR_d = {
             'General_information': {'CR_number': None, 'CR_coordinator': None,
@@ -199,21 +208,21 @@ def main_func(table_name):
 
             if cells.get((row, 1)):
                 header_text = str(cells[row, 1])
-                # Смена разделов сделана более гибкой для поддержки старых форм
                 if re_var(['supporting', 'descr'], header_text):
                     section = 'Sup_doc'
                 elif re_var(['impact', 'init', 'TDD'], header_text):
                     section = 'TDD'
                 elif re_var(['impact', 'TDD'], header_text):
                     if section == 'Sup_doc':
-                        section = 'TDD'  # Для старых форм, где нет разделения на init/other
+                        section = 'TDD'
                     elif section == 'TDD':
                         section = 'Other_TDD'
                 elif re_var(['ssc'], header_text):
                     section = 'SSC'
                 elif re_var(['final', 'eval'], header_text):
                     section = 'Final'
-                elif re_var(['non-tech'], header_text) or re_var(['nontech'], header_text):
+                elif re_var(['non-tech'], header_text) or re_var(['nontech'],
+                                                                 header_text):
                     section = 'Nontech'
                 elif re_var(['confirmat'], header_text):
                     section = 'Confirmation'
@@ -236,7 +245,7 @@ def main_func(table_name):
 
                     if re_var(['code'], cells.get((row, 1))) or re_var(
                             ['organ'], cells.get((row, 1))) or re_var(
-                            ['posit'], cells.get((row, 1))):
+                        ['posit'], cells.get((row, 1))):
                         _temp_dict = temp_dict_of_row(row, cells)
                         continue
 
@@ -288,9 +297,9 @@ def main_func(table_name):
                                         _temp_dict[column_number]):
                                 if '_' in str(insert_value):
                                     CR_d['TDD'][code]['Revision'] = \
-                                    str(insert_value).split('_')[0]
+                                        str(insert_value).split('_')[0]
                                     CR_d['TDD'][code]['Version'] = \
-                                    str(insert_value).split('_')[1]
+                                        str(insert_value).split('_')[1]
                                 else:
                                     CR_d['TDD'][code][
                                         'Revision'] = insert_value
@@ -328,7 +337,7 @@ def main_func(table_name):
                                 position = insert_value
                             elif re_var(['resp', 'pers'],
                                         _temp_dict[column_number]) or re_var(
-                                    ['name'], _temp_dict[column_number]):
+                                ['name'], _temp_dict[column_number]):
                                 name = insert_value
                                 CR_d['Confirmation'][code][name] = {
                                     'Position': None, 'Date': None}
@@ -340,7 +349,7 @@ def main_func(table_name):
                         elif section == 'Approval':
                             if re_var(['person'],
                                       _temp_dict[column_number]) or re_var(
-                                    ['name'], _temp_dict[column_number]):
+                                ['name'], _temp_dict[column_number]):
                                 CR_d['Approval'][code]['person'] = insert_value
                             elif re_var(['date'], _temp_dict[column_number]):
                                 CR_d['Approval'][code]['date'] = insert_value
@@ -373,7 +382,7 @@ def main_func(table_name):
                             if header_in_reg(header, position,
                                              dict_of_reg_value_CRD):
                                 CR_d['General_information'][position] = \
-                                _temp_dict2[header]
+                                    _temp_dict2[header]
                                 dict_of_reg_value_local.pop(position)
                                 break
                     if section == 'Sup_doc':
@@ -381,7 +390,7 @@ def main_func(table_name):
                             str(cells.get((row, 1)))] = first_not_empty(
                             (row, 2), cells, 'row')
 
-    elif 'fcr' in filename_lower:
+    elif doc_mode == 'FCR':
         dict_of_reg_value_local = dict_of_reg_value_FCR.copy()
         CR_d = {
             'General_information': {
@@ -461,7 +470,7 @@ def main_func(table_name):
                 if section == 'Evaluation' and re_var(['crit', 'imp'],
                                                       cells[row, 1]): continue
                 if section == 'Evaluation' and subsection == 'JD' and re_var(
-                    ['file', 'extension'], cells[row, 1]): continue
+                        ['file', 'extension'], cells[row, 1]): continue
                 if section == 'General' and re_var(['field', 'change', 'fcr'],
                                                    cells[row, 1]): continue
                 if section == 'General' and re_var(['change', 'init', 'for'],
@@ -474,7 +483,7 @@ def main_func(table_name):
 
                 if section == 'Approval' and re_var(['\\*', '\\*\\*'],
                                                     cells[row, 1], stop_words=[
-                        '\\*\\*\\*']): continue
+                            '\\*\\*\\*']): continue
                 if section == 'Sup_doc' and (
                         re_var(['file', 'ext'], cells[row, 1]) or re_var(
                     ['end', 'init'], cells[row, 1])): continue
@@ -523,9 +532,9 @@ def main_func(table_name):
                                       _temp_dict[column_number]):
                                 if '_' in str(insert_value):
                                     CR_d['TDD_sets'][code]['Revision'] = \
-                                    str(insert_value).split('_')[0]
+                                        str(insert_value).split('_')[0]
                                     CR_d['TDD_sets'][code]['Version'] = \
-                                    str(insert_value).split('_')[1]
+                                        str(insert_value).split('_')[1]
                                 else:
                                     CR_d['TDD_sets'][code][
                                         'Revision'] = insert_value
@@ -557,15 +566,15 @@ def main_func(table_name):
                                     index_of_doc_code]['Name'] = insert_value
                             if re_var(['revis', 'ED'],
                                       _temp_dict[column_number]) or re_var(
-                                    ['ED', 'revis'],
-                                    _temp_dict[column_number]):
+                                ['ED', 'revis'],
+                                _temp_dict[column_number]):
                                 if '_' in str(insert_value):
                                     CR_d['TDD_sets'][code]['Documents'][
                                         index_of_doc_code]['Revision'] = \
-                                    str(insert_value).split('_')[0]
+                                        str(insert_value).split('_')[0]
                                     CR_d['TDD_sets'][code]['Documents'][
                                         index_of_doc_code]['Version'] = \
-                                    str(insert_value).split('_')[1]
+                                        str(insert_value).split('_')[1]
                                 else:
                                     CR_d['TDD_sets'][code]['Documents'][
                                         index_of_doc_code][
@@ -628,7 +637,7 @@ def main_func(table_name):
                         if section == 'Approval':
                             if re_var(['person'],
                                       _temp_dict[column_number]) or re_var(
-                                    ['name'], _temp_dict[column_number]):
+                                ['name'], _temp_dict[column_number]):
                                 CR_d['Approval'][-1]['Name'] = insert_value
                             elif re_var(['date'], _temp_dict[column_number]):
                                 CR_d['Approval'][-1]['Date'] = insert_value
@@ -705,7 +714,7 @@ def main_func(table_name):
                                         position] = _temp_dict2[header]
                                 else:
                                     CR_d['General_information'][position] = \
-                                    _temp_dict2[header]
+                                        _temp_dict2[header]
                                 dict_of_reg_value_local.pop(position)
                                 break
 
@@ -729,8 +738,10 @@ def main_func(table_name):
                                 CR_d['General_information']['Evaluation'][
                                     'JD'] = {}
                             curr_cell, \
-                            CR_d['General_information']['Evaluation']['JD'][
-                                str(cells.get((row, 1)))] = first_not_empty(
+                                CR_d['General_information']['Evaluation'][
+                                    'JD'][
+                                    str(cells.get(
+                                        (row, 1)))] = first_not_empty(
                                 (row, 2), cells, 'row')
                             if re_var(['type', 'change'], cells.get((row, 1))):
                                 subsection = False
@@ -738,7 +749,7 @@ def main_func(table_name):
             if not cells.get((row, 1)) and section == 'Concurrence':
                 section = 'Approval'
 
-    elif 'cr' in filename_lower:
+    elif doc_mode == 'CR':
         dict_of_reg_value_local = dict_of_reg_value_CR.copy()
         CR_d = {
             'General_information': {'CR_number': None, 'Organization': None,
@@ -773,7 +784,7 @@ def main_func(table_name):
                 section = 'Confirmation'
             elif section == 'Confirmation' and (
                     re_var(['non-tech'], cells.get((row, 1))) or re_var(
-                    ['nontech'], cells.get((row, 1)))):
+                ['nontech'], cells.get((row, 1)))):
                 section = 'Nontech'
             elif section == 'Nontech' and re_var(['approv'],
                                                  cells.get((row, 1))):
@@ -783,15 +794,15 @@ def main_func(table_name):
                            'Approval'] and (
                     re_var(['code'], cells.get((row, 1))) or re_var(['posit'],
                                                                     cells.get((
-                                                                              row,
-                                                                              1)))):
+                                                                            row,
+                                                                            1)))):
                 _temp_dict = temp_dict_of_row(row, cells)
                 if section == 'SSC':
                     not_empty = first_not_empty((row, 2), cells, 'row')[0]
                     if not_empty:
                         cell_of_DSA = \
-                        first_not_empty((not_empty[0], not_empty[1] + 1),
-                                        cells, 'row')[1]
+                            first_not_empty((not_empty[0], not_empty[1] + 1),
+                                            cells, 'row')[1]
                         CR_d['General_information']['Impact_DSA'] = cell_of_DSA
                 continue
 
@@ -833,9 +844,9 @@ def main_func(table_name):
                         if re_var(['revision'], _temp_dict[column_number]):
                             if '_' in str(insert_value):
                                 CR_d[section][code]['Revision'] = \
-                                str(insert_value).split('_')[0]
+                                    str(insert_value).split('_')[0]
                                 CR_d[section][code]['Version'] = \
-                                str(insert_value).split('_')[1]
+                                    str(insert_value).split('_')[1]
                             else:
                                 CR_d[section][code]['Revision'] = insert_value
                                 CR_d[section][code]['Version'] = 0
@@ -874,7 +885,7 @@ def main_func(table_name):
                             position = insert_value
                         elif re_var(['resp', 'pers'],
                                     _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]):
+                            ['name'], _temp_dict[column_number]):
                             name = insert_value
                             CR_d['Confirmation'][code][name] = {
                                 'Position': None, 'Date': None}
@@ -886,7 +897,7 @@ def main_func(table_name):
                     elif section == 'Approval':
                         if re_var(['person'],
                                   _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]):
+                            ['name'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['person'] = insert_value
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['date'] = insert_value
@@ -917,11 +928,11 @@ def main_func(table_name):
                         if header_in_reg(header, position,
                                          dict_of_reg_value_CR):
                             CR_d['General_information'][position] = \
-                            _temp_dict2[header]
+                                _temp_dict2[header]
                             dict_of_reg_value_local.pop(position)
                             break
 
-    print(f'{short_table_name} finished. JSON will be done.')
+    print(f'>>> Файл {short_table_name} успешно разобран. Формируется JSON...')
     return CR_d
 
 
@@ -944,14 +955,13 @@ def dicts_normalization(original_dict_name):
     original_dict = result[original_dict_name].copy()
     normalized_dict['File_name'] = original_dict_name
 
-    # Перешли на проверку внутренней структуры (ключей), вместо анализа имени файла
     if 'TDD' in original_dict:
         normalized_dict['Change_request_No'] = \
-        original_dict['General_information']['CR_number']
+            original_dict['General_information']['CR_number']
         normalized_dict['Reg_date'] = normalized_dict['Contr_change_coord'] = \
-        normalized_dict['Type_of_changes'] = normalized_dict[
+            normalized_dict['Type_of_changes'] = normalized_dict[
             'Constr_facility'] = normalized_dict['Type_of_changed_doc'] = \
-        normalized_dict['E-log?'] = None
+            normalized_dict['E-log?'] = None
         normalized_dict['Ini_org'] = original_dict['General_information'][
             'Organization']
         normalized_dict['Change_ini'] = original_dict['General_information'][
@@ -960,30 +970,35 @@ def dicts_normalization(original_dict_name):
             'Cod_of_reason'] = None
         normalized_dict['Other_reason'] = '\n'.join(
             filter(lambda x: x is not None, list(
-                map(lambda x: original_dict['TDD'][x]['Reason'] if 'Reason' in original_dict['TDD'][x] else None,
+                map(lambda x: original_dict['TDD'][x]['Reason'] if 'Reason' in
+                                                                   original_dict[
+                                                                       'TDD'][
+                                                                       x] else None,
                     original_dict['TDD']))))
         normalized_dict['Descr_of_change'] = normalized_dict[
             'Rel_to_prev_CR'] = normalized_dict['Approval_method'] = \
-        normalized_dict['Just_simple'] = normalized_dict['NSC_category'] = None
+            normalized_dict['Just_simple'] = normalized_dict[
+            'NSC_category'] = None
         normalized_dict['Impact_direct_123'] = True if original_dict[
             'SSC'] else False
-        normalized_dict['Impact_DSA'] = original_dict['General_information'].get(
+        normalized_dict['Impact_DSA'] = original_dict[
+            'General_information'].get(
             'Impact_DSA')
         normalized_dict['Impact_structural_geom'] = normalized_dict[
             'Impact_nucl'] = normalized_dict['Impact_fire'] = normalized_dict[
             'Impact_industrial'] = normalized_dict['Impact_environment'] = \
-        normalized_dict['Impact_TDD'] = normalized_dict['Impact_lic_doc'] = \
-        normalized_dict['Prompt_TDD?'] = normalized_dict[
+            normalized_dict['Impact_TDD'] = normalized_dict['Impact_lic_doc'] = \
+            normalized_dict['Prompt_TDD?'] = normalized_dict[
             'Material_equivalent?'] = normalized_dict[
             'Comments_eng_eval'] = None
         normalized_dict['Impact_contract'] = \
-        original_dict['General_information']['Contract']
+            original_dict['General_information']['Contract']
         normalized_dict['Impact_cost'] = original_dict['General_information'][
             'Impact_cost']
         normalized_dict['Impact_schedule'] = \
-        original_dict['General_information']['Schedule']
+            original_dict['General_information']['Schedule']
         normalized_dict['Comments_nont_ass'] = \
-        original_dict['General_information']['Comment_nont']
+            original_dict['General_information']['Comment_nont']
 
         for key in original_dict['Confirmation']:
             _temp_dict = {}
@@ -994,7 +1009,7 @@ def dicts_normalization(original_dict_name):
                 _temp_dict['Name_sur'] = _temp_name
                 _temp_dict['FMV_number'] = _temp_dict['HAEA_reg'] = None
                 _temp_dict['Date'] = \
-                original_dict['Confirmation'][key][_temp_name]['Date']
+                    original_dict['Confirmation'][key][_temp_name]['Date']
                 normalized_dict['Signature_list'].append(_temp_dict)
 
         for key in original_dict['Approval']:
@@ -1002,7 +1017,8 @@ def dicts_normalization(original_dict_name):
             _temp_dict['Role'] = None
             _temp_dict['Position'] = key
             if isinstance(original_dict['Approval'][key], dict):
-                _temp_dict['Name_sur'] = original_dict['Approval'][key].get('person')
+                _temp_dict['Name_sur'] = original_dict['Approval'][key].get(
+                    'person')
                 _temp_dict['Date'] = original_dict['Approval'][key].get('date')
             else:
                 _temp_dict['Name_sur'] = original_dict['Approval'][key]
@@ -1035,15 +1051,20 @@ def dicts_normalization(original_dict_name):
                     'Set_rev'] = _temp_dict['Ser_version'] = _temp_dict[
                     'Set_status'] = None
                 _temp_dict['ED_code'] = key
-                _temp_dict['ED_name'] = original_dict['Configur'][key].get('Name')
-                _temp_dict['ED_rev'] = original_dict['Configur'][key].get('Revision')
+                _temp_dict['ED_name'] = original_dict['Configur'][key].get(
+                    'Name')
+                _temp_dict['ED_rev'] = original_dict['Configur'][key].get(
+                    'Revision')
                 _temp_dict['ED_version'] = original_dict['Configur'][key].get(
                     'Version')
-                _temp_dict['ED_status'] = original_dict['Configur'][key].get('Status')
+                _temp_dict['ED_status'] = original_dict['Configur'][key].get(
+                    'Status')
                 _temp_dict['Changed_sheets'] = _temp_dict['AMX_AM'] = None
-                _temp_dict['Descr_of_change'] = original_dict['Configur'][key].get(
+                _temp_dict['Descr_of_change'] = original_dict['Configur'][
+                    key].get(
                     'Description')
-                _temp_dict['New_rev?'] = original_dict['Configur'][key].get('Imp_eval')
+                _temp_dict['New_rev?'] = original_dict['Configur'][key].get(
+                    'Imp_eval')
                 normalized_dict['TDD'].append(_temp_dict)
 
         for key in original_dict['SSC']:
@@ -1060,38 +1081,39 @@ def dicts_normalization(original_dict_name):
                 _temp_dict = {}
                 _temp_dict['Type'] = 'Supporting'
                 _temp_dict['File_name'] = key
-                _temp_dict['File_content'] = original_dict['Supp_descr_docs'][key]
+                _temp_dict['File_content'] = original_dict['Supp_descr_docs'][
+                    key]
                 normalized_dict['Support_files'].append(_temp_dict)
 
     elif 'TDD_sets' in original_dict:
         normalized_dict['Change_request_No'] = \
-        original_dict['General_information']['CR_number']
+            original_dict['General_information']['CR_number']
         normalized_dict['Reg_date'] = original_dict['General_information'][
             'Reg_date']
         normalized_dict['Contr_change_coord'] = \
-        original_dict['General_information']['CR_coordinator']
+            original_dict['General_information']['CR_coordinator']
         normalized_dict['Type_of_changes'] = \
-        original_dict['General_information']['Change_type']
+            original_dict['General_information']['Change_type']
         normalized_dict['Constr_facility'] = \
-        original_dict['General_information']['Constr_facility']
+            original_dict['General_information']['Constr_facility']
         normalized_dict['Type_of_changed_doc'] = \
-        original_dict['General_information']['Document_type']
+            original_dict['General_information']['Document_type']
         normalized_dict['E-log?'] = None
         normalized_dict['Ini_org'] = original_dict['General_information'][
             'Organization']
         normalized_dict['Change_ini'] = original_dict['General_information'][
             'Initiator']
         normalized_dict['Ini_internal_CR'] = \
-        original_dict['General_information']['CR_number_int']
+            original_dict['General_information']['CR_number_int']
         normalized_dict['Cod_of_reason'] = \
-        original_dict['General_information']['Reason_code']
+            original_dict['General_information']['Reason_code']
         normalized_dict['Other_reason'] = original_dict['General_information'][
             'CR_reason']
         normalized_dict['Descr_of_change'] = \
-        original_dict['General_information']['Descr_tech_sol']
+            original_dict['General_information']['Descr_tech_sol']
         normalized_dict['Rel_to_prev_CR'] = None
         normalized_dict['Approval_method'] = \
-        original_dict['General_information']['Method_CR']
+            original_dict['General_information']['Method_CR']
         normalized_dict['Just_simple'] = original_dict['General_information'][
             'Ini_Method_justif']
         normalized_dict['NSC_category'] = None
@@ -1099,23 +1121,23 @@ def dicts_normalization(original_dict_name):
             'SSC'] else False
         normalized_dict['Impact_DSA'] = None
         normalized_dict['Impact_structural_geom'] = \
-        original_dict['General_information']['Evaluation']['SS']
+            original_dict['General_information']['Evaluation']['SS']
         normalized_dict['Impact_nucl'] = \
-        original_dict['General_information']['Evaluation']['NS']
+            original_dict['General_information']['Evaluation']['NS']
         normalized_dict['Impact_fire'] = \
-        original_dict['General_information']['Evaluation']['FS']
+            original_dict['General_information']['Evaluation']['FS']
         normalized_dict['Impact_industrial'] = \
-        original_dict['General_information']['Evaluation']['IS']
+            original_dict['General_information']['Evaluation']['IS']
         normalized_dict['Impact_environment'] = \
-        original_dict['General_information']['Evaluation']['ES']
+            original_dict['General_information']['Evaluation']['ES']
         normalized_dict['Impact_TDD'] = \
-        original_dict['General_information']['Evaluation']['Impact_DDD']
+            original_dict['General_information']['Evaluation']['Impact_DDD']
         normalized_dict['Impact_lic_doc'] = \
-        original_dict['General_information']['Evaluation']['Impact_LDD']
+            original_dict['General_information']['Evaluation']['Impact_LDD']
         normalized_dict['Prompt_TDD?'] = \
-        original_dict['General_information']['Evaluation']['Prompt_req']
+            original_dict['General_information']['Evaluation']['Prompt_req']
         normalized_dict['Material_equivalent?'] = \
-        original_dict['General_information']['Evaluation']['Material_eq']
+            original_dict['General_information']['Evaluation']['Material_eq']
         normalized_dict['Comments_eng_eval'] = smart_join([original_dict[
                                                                'General_information'][
                                                                'Evaluation'][
@@ -1126,9 +1148,9 @@ def dicts_normalization(original_dict_name):
                                                                'Refuse_comment']])
         normalized_dict['Impact_contract'] = None
         normalized_dict['Impact_cost'] = \
-        original_dict['General_information']['Evaluation']['Impact_cost']
+            original_dict['General_information']['Evaluation']['Impact_cost']
         normalized_dict['Impact_schedule'] = \
-        original_dict['General_information']['Evaluation']['Schedule']
+            original_dict['General_information']['Evaluation']['Schedule']
         normalized_dict['Comments_nont_ass'] = None
 
         for key in original_dict['Approval']:
@@ -1153,24 +1175,26 @@ def dicts_normalization(original_dict_name):
                 _temp_dict['Set_status'] = None
                 _temp_dict['ED_code'] = document
                 _temp_dict['ED_name'] = \
-                original_dict['TDD_sets'][key]['Documents'][document]['Name']
+                    original_dict['TDD_sets'][key]['Documents'][document][
+                        'Name']
                 _temp_dict['ED_rev'] = \
-                original_dict['TDD_sets'][key]['Documents'][document][
-                    'Revision']
+                    original_dict['TDD_sets'][key]['Documents'][document][
+                        'Revision']
                 _temp_dict['ED_version'] = \
-                original_dict['TDD_sets'][key]['Documents'][document][
-                    'Version']
+                    original_dict['TDD_sets'][key]['Documents'][document][
+                        'Version']
                 _temp_dict['ED_status'] = None
                 _temp_dict['Changed_sheets'] = \
-                original_dict['TDD_sets'][key]['Documents'][document]['Sheets']
+                    original_dict['TDD_sets'][key]['Documents'][document][
+                        'Sheets']
                 _temp_dict['AMX_AM'] = \
-                original_dict['TDD_sets'][key]['Documents'][document][
-                    'AMX'] if 'AMX' in \
-                              original_dict['TDD_sets'][key]['Documents'][
-                                  document] else None
+                    original_dict['TDD_sets'][key]['Documents'][document][
+                        'AMX'] if 'AMX' in \
+                                  original_dict['TDD_sets'][key]['Documents'][
+                                      document] else None
                 _temp_dict['Descr_of_change'] = \
-                original_dict['TDD_sets'][key]['Documents'][document][
-                    'Description']
+                    original_dict['TDD_sets'][key]['Documents'][document][
+                        'Description']
                 _temp_dict['New_rev?'] = None
                 normalized_dict['TDD'].append(_temp_dict)
 
@@ -1579,14 +1603,26 @@ def output(option):
             excel_path = ''
         else:
             excel_path = input(
-                'Please, enter the FULL path to the directory with CR, CR.D, FCR: ')
+                'Введите ПОЛНЫЙ путь к папке с файлами (или нажмите Enter для текущей папки): ')
             if excel_path and excel_path[-1] != '\\':
                 excel_path += '\\'
 
-    list_of_tables = os.listdir(path=excel_path if excel_path else '.')
+    # --- ИЗМЕНЕН ФИЛЬТР ФАЙЛОВ ---
+    # Теперь скрипт ищет любые .xls и .xlsx, игнорируя скрытые временные файлы, начинающиеся с "~$"
+    all_files = os.listdir(path=excel_path if excel_path else '.')
     list_of_tables = list(filter(
-        lambda x: 'xls' in x.split('.')[-1] and x[-1] != 'b' and ('CR' in x or 'FCR' in x),
-        list_of_tables))
+        lambda x: (x.endswith('.xls') or x.endswith(
+            '.xlsx')) and not x.startswith('~$'),
+        all_files
+    ))
+
+    print(f"\nНайдено файлов Excel к обработке: {len(list_of_tables)}")
+    if len(list_of_tables) == 0:
+        print(
+            "В текущей папке нет файлов формата .xls или .xlsx для обработки.")
+        return
+    # -----------------------------
+
     result = {}
 
     for file in list_of_tables:
@@ -1594,14 +1630,14 @@ def output(option):
         result[file] = main_func(full_path)
 
     if option == 0:
-        CR_list = list(filter(lambda x: 'CR.D-' in x or 'FCR.D' in x, list(result.keys())))
-        for CR in CR_list:
-            a = dicts_normalization(CR)
+        # Для режима отладки, если вдруг он нужен
+        for file in result:
+            a = dicts_normalization(file)
             from_diff_to_union_excel(a)
     else:
         for dictus in result:
-            # Расширена логика распаковки битов безопасности для поддержки файлов FCR.D
-            if ('cr.d' in dictus.lower() or 'fcr.d' in dictus.lower()) and result.get(dictus):
+            if result.get(dictus):
+                # Распаковка битов для TDD
                 for code in result[dictus].get('TDD', {}):
                     if 'Impact' in result[dictus]['TDD'][code] and isinstance(
                             result[dictus]['TDD'][code]['Impact'], int):
@@ -1613,7 +1649,6 @@ def output(option):
                             'IS': bin_impact[2], 'ES': bin_impact[3],
                             'SS': bin_impact[4]}
 
-            if result[dictus]:
                 short_name = '.'.join(dictus.split('.')[:-1])
                 file_name = excel_path + short_name + '.txt' if excel_path else short_name + '.txt'
                 with open(file_name, 'wb+') as out_json:
@@ -1621,8 +1656,16 @@ def output(option):
                     out_json.write(
                         opener(result[dictus], 0, form='json').encode(
                             'utf-16-le'))
-                    print(f'{short_name}.txt is ready!')
+                    print(
+                        f'>>> Готово! Текстовый отчет сохранен: {short_name}.txt')
 
 
 if __name__ == '__main__':
-    output('pwd')
+    # --- ДОБАВЛЕНА ЗАЩИТА ОТ ЗАКРЫТИЯ КОНСОЛИ ---
+    try:
+        output('pwd')
+    except Exception as e:
+        print(f"\nПроизошла критическая ошибка во время работы:")
+        traceback.print_exc()
+    finally:
+        input("\nРабота завершена. Нажмите Enter, чтобы выйти...")
