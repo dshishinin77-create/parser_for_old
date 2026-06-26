@@ -1,0 +1,42 @@
+name: Build EXE
+
+# Когда запускать экшен: при каждом пуше в ветку main (или master)
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Позволяет запускать сборку вручную из интерфейса GitHub
+
+jobs:
+  build-windows:
+    runs-on: windows-latest # Важно: собирать нужно на Windows машине
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11' # Укажите версию Python, на которой работает ваш скрипт
+        architecture: 'x64'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build executable with PyInstaller
+      run: |
+        # --onefile собирает все в один .exe файл
+        # --name задает имя итогового файла
+        # --clean очищает кэш перед сборкой
+        pyinstaller --onefile --clean --name "CR_Parser" old_forms.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: CR_Parser_Windows_EXE # Имя архива, который вы сможете скачать
+        path: dist/CR_Parser.exe # Путь к файлу, который создает PyInstaller
+        retention-days: 7 # Сколько дней хранить файл на GitHub
