@@ -372,6 +372,12 @@ def main_func(table_name):
                                                        position,
                                                        dict_of_reg_value_CRD) and flag == True:
                                         _temp_dict2[key + 1] = None
+
+                    # --- ИСПРАВЛЕНИЕ ОШИБКИ IndexError ---
+                    if len(_temp_dict2) % 2 != 0 and _temp_dict2:
+                        _temp_dict2[max(_temp_dict2.keys()) + 1] = None
+                    # -------------------------------------
+
                     sorted_dict_keys = sorted(_temp_dict2.keys())
                     _temp_dict2 = {
                         _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
@@ -699,6 +705,12 @@ def main_func(table_name):
                     if flag == True:
                         _temp_temp_dict[key + 1] = None
                     _temp_dict2 = _temp_temp_dict
+
+                    # --- ИСПРАВЛЕНИЕ ОШИБКИ IndexError ---
+                    if len(_temp_dict2) % 2 != 0 and _temp_dict2:
+                        _temp_dict2[max(_temp_dict2.keys()) + 1] = None
+                    # -------------------------------------
+
                     sorted_dict_keys = sorted(_temp_dict2.keys())
                     _temp_dict2 = {
                         _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
@@ -918,6 +930,12 @@ def main_func(table_name):
                                 elif header_in_reg(_temp_dict2[item], position,
                                                    dict_of_reg_value_CR) and flag == True:
                                     _temp_dict2[key + 1] = None
+
+                # --- ИСПРАВЛЕНИЕ ОШИБКИ IndexError ---
+                if len(_temp_dict2) % 2 != 0 and _temp_dict2:
+                    _temp_dict2[max(_temp_dict2.keys()) + 1] = None
+                # -------------------------------------
+
                 sorted_dict_keys = sorted(_temp_dict2.keys())
                 _temp_dict2 = {
                     _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]] for
@@ -1596,9 +1614,6 @@ class excel_formating:
 def output(option):
     global result
 
-    # --- УМНОЕ ОПРЕДЕЛЕНИЕ ПАПКИ ---
-    # Позволяет всегда искать файлы там, где лежит сам скрипт (даже если он стал .exe),
-    # независимо от того, как ты его запустил
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
     else:
@@ -1627,8 +1642,6 @@ def output(option):
         print(f"Ошибка при доступе к папке: {e}")
         return
 
-    # --- УЛУЧШЕННЫЙ ФИЛЬТР ---
-    # .lower() делает так, что код видит и .xlsx, и .XLSX
     list_of_tables = list(filter(
         lambda x: (x.lower().endswith('.xls') or x.lower().endswith(
             '.xlsx')) and not x.startswith('~$'),
