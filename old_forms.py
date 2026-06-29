@@ -70,7 +70,6 @@ def temp_dict_of_row(row, cells):
     last_cell = list(cells.keys())[-1]
     first_col = None
 
-    # Находим первую непустую ячейку в строке, игнорируя отступы слева
     for col in range(1, last_cell[1] + 1):
         if cells.get((row, col)):
             first_col = col
@@ -150,7 +149,8 @@ dict_of_reg_value_CRD = {
     'Reason_code': [['(reason.*code|okának.*kódja)'], []],
     'CR_reason': [
         ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
-        ['code']]
+        ['code']],
+    'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
 dict_of_reg_value_CR = {
@@ -170,7 +170,7 @@ dict_of_reg_value_CR = {
     'CR_reason': [
         ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
         ['code']],
-    'Descr_tech_sol': ['descr', 'sol']
+    'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
 
@@ -223,7 +223,9 @@ def main_func(table_name):
                                     'Change_type': None}, 'Confirmation': {},
             'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {}}
         section = 'General'
+        prev_section = 'General'
         _temp_dict = {}
+
         for row in range(first_cell[0], last_cell[0] + 1):
             if list(filter(
                     lambda x: x[0] == row and x[1] > last_cell[1] and cells[x],
@@ -266,222 +268,257 @@ def main_func(table_name):
                         ['согласовано'], header_text):
                     section = 'Approval'
 
-                if section == 'Sup_doc' and re_var(['file', 'extension'],
-                                                   first_text): continue
-                if section == 'General' and re_var(['general', 'inform'],
-                                                   first_text): continue
+            if section != prev_section:
+                _temp_dict = {}
+                prev_section = section
 
-                if section in ['TDD', 'Other_TDD', 'SSC', 'Confirmation',
-                               'Approval']:
-                    if section == 'Approval' and list(
-                            filter(lambda x: x.size['columns'] == last_cell[
-                                1] and x.start_cell.row == row,
-                                   list(ws.merged_cells.ranges))) or \
-                            (first_text and first_text[0] == '*'):
-                        break
+            is_bottom_up_sig = False
+            c_date = None
+            c_pos = None
 
-                    if first_text and (
-                            re_var(['code'], first_text) or re_var(['organ'],
-                                                                   first_text) or re_var(
-                            ['posit'], first_text)):
-                        _temp_dict = temp_dict_of_row(row, cells)
-                        continue
+            row_str = " ".join([str(cells.get((row, c))).lower() for c in
+                                range(1, last_cell[1] + 1) if
+                                cells.get((row, c))])
 
-                    if not _temp_dict: continue
+            if ('signature' in row_str or 'aláírás' in row_str) and (
+                    'position' in row_str or 'beosztás' in row_str):
+                for col in range(1, last_cell[1] + 1):
+                    val = str(cells.get((row, col))).lower()
+                    if 'dd.mm.yyyy' in val or 'dátuma' in val or 'date' in val:
+                        c_date = col
+                    elif 'position' in val or 'beosztás' in val or 'name' in val or 'név' in val:
+                        c_pos = col
+                    elif 'signature' in val or 'aláírás' in val:
+                        is_bottom_up_sig = True
 
-                    code = None
-                    if section in ['TDD', 'Other_TDD', 'SSC']:
-                        code_keys = list(
-                            filter(lambda x: re_var(['code'], _temp_dict[x]),
-                                   _temp_dict))
-                        if code_keys: code = cells.get((row, code_keys[0]))
-                    elif section == 'Confirmation':
-                        code_keys = list(
-                            filter(lambda x: re_var(['organ'], _temp_dict[x]),
-                                   _temp_dict))
-                        if code_keys: code = cells.get((row, code_keys[0]))
-                    elif section == 'Approval':
-                        code_keys = list(
-                            filter(lambda x: re_var(['posit'],
-                                                    _temp_dict[x]) or re_var(
-                                ['code'], _temp_dict[x]),
-                                   _temp_dict))
-                        if code_keys: code = cells.get((row, code_keys[0]))
+                if is_bottom_up_sig and c_pos:
+                    role_text = cells.get((row - 1, 1))
+                    if not role_text:
+                        role_text = cells.get((row - 1, 2))
 
-                    if not code:
-                        continue
+                    date_val = cells.get((row - 1, c_date)) if c_date else None
+                    pos_name_val = cells.get((row - 1, c_pos))
 
-                    if section == 'SSC':
-                        CR_d['SSC'][code] = {}
-                    elif section == 'Confirmation':
-                        if code not in CR_d['Confirmation'].keys():
-                            CR_d['Confirmation'][code] = {}
-                    elif section == 'Approval':
-                        if code not in CR_d['Approval'].keys():
-                            CR_d['Approval'][code] = {}
-                    else:
-                        if code not in CR_d['TDD'].keys():
-                            CR_d['TDD'][code] = {}
-
-                    for column_number in _temp_dict:
-                        insert_value = cells.get((row, column_number))
-                        if section in ['TDD', 'Other_TDD'] and insert_value:
-                            if re_var(['organ'], _temp_dict[column_number]):
-                                CR_d['TDD'][code][
-                                    'Organization'] = insert_value
-                            elif re_var(['new', 'revision'],
-                                        _temp_dict[column_number]):
-                                _temp_bool = True if 'es' in str(
-                                    insert_value).lower() else False
-                                CR_d['TDD'][code]['New_rev_req'] = _temp_bool
-                            elif re_var(['revision'],
-                                        _temp_dict[column_number]):
-                                if '_' in str(insert_value):
-                                    CR_d['TDD'][code]['Revision'] = \
-                                        str(insert_value).split('_')[0]
-                                    CR_d['TDD'][code]['Version'] = \
-                                        str(insert_value).split('_')[1]
-                                else:
-                                    CR_d['TDD'][code][
-                                        'Revision'] = insert_value
-                                    CR_d['TDD'][code]['Version'] = 0
-                            elif re_var(['name'], _temp_dict[column_number]):
-                                CR_d['TDD'][code]['Name'] = insert_value
-                            elif re_var(['state'], _temp_dict[column_number]):
-                                CR_d['TDD'][code]['Status'] = insert_value
-                            elif re_var(['description'],
-                                        _temp_dict[column_number]):
-                                if 'Description' not in CR_d['TDD'][
-                                    code].keys():
-                                    CR_d['TDD'][code]['Description'] = [
-                                        insert_value]
-                                else:
-                                    CR_d['TDD'][code]['Description'].append(
-                                        insert_value)
-                            elif re_var(['impact'], _temp_dict[column_number]):
-                                list_of_factors = ''
-                                for factor in range(5):
-                                    _temp_bin = '0' if re_var(['no'],
-                                                              cells.get((row,
-                                                                         column_number + factor))) else '1'
-                                    list_of_factors += _temp_bin
-                                CR_d['TDD'][code]['Impact'] = int(
-                                    list_of_factors, 2)
-                        elif section == 'SSC':
-                            if re_var(['name'], _temp_dict[column_number]):
-                                CR_d['SSC'][code]['Name'] = insert_value
-                            elif re_var(['description'],
-                                        _temp_dict[column_number]):
-                                CR_d['SSC'][code]['Description'] = insert_value
-                        elif section == 'Confirmation':
-                            if re_var(['posit'], _temp_dict[column_number]):
-                                position = insert_value
-                            elif re_var(['resp', 'pers'],
-                                        _temp_dict[column_number]) or re_var(
-                                    ['name'],
-                                    _temp_dict[column_number]) or re_var(
-                                    ['approv'], _temp_dict[column_number]):
-                                name = insert_value
-                                CR_d['Confirmation'][code][name] = {
-                                    'Position': None, 'Date': None}
-                            elif re_var(['date'], _temp_dict[column_number]):
-                                date = insert_value
-                                if 'name' in locals() and name in \
-                                        CR_d['Confirmation'][code]:
-                                    CR_d['Confirmation'][code][name][
-                                        'Position'] = locals().get('position')
-                                    CR_d['Confirmation'][code][name][
-                                        'Date'] = date
-                            elif re_var(['init'], _temp_dict[column_number]):
-                                if insert_value:
-                                    val = str(insert_value)
-                                    if code and str(code).strip():
-                                        val = f"{code} - {val}"
-                                    if not CR_d['General_information'][
-                                        'Initiator']:
-                                        CR_d['General_information'][
-                                            'Initiator'] = val
-                                    elif val not in \
-                                            CR_d['General_information'][
-                                                'Initiator']:
-                                        CR_d['General_information'][
-                                            'Initiator'] += f"\n{val}"
-                        elif section == 'Approval':
-                            if re_var(['person'],
-                                      _temp_dict[column_number]) or re_var(
-                                    ['name'],
-                                    _temp_dict[column_number]) or re_var(
-                                    ['approv'], _temp_dict[column_number]):
-                                CR_d['Approval'][code]['person'] = insert_value
-                            elif re_var(['date'], _temp_dict[column_number]):
-                                CR_d['Approval'][code]['date'] = insert_value
-                            elif re_var(['init'], _temp_dict[column_number]):
-                                if insert_value:
-                                    val = str(insert_value)
-                                    if code and str(code).strip():
-                                        val = f"{code} - {val}"
-                                    if not CR_d['General_information'][
-                                        'Initiator']:
-                                        CR_d['General_information'][
-                                            'Initiator'] = val
-                                    elif val not in \
-                                            CR_d['General_information'][
-                                                'Initiator']:
-                                        CR_d['General_information'][
-                                            'Initiator'] += f"\n{val}"
-
-                if section in ['General', 'Final', 'Nontech']:
-                    _temp_dict2 = temp_dict_of_row(row, cells)
-                    if not _temp_dict2:
-                        continue
-
-                    vals = list(_temp_dict2.values())
-                    if len(vals) >= 3 and (
-                            re_var(['registr'], vals[0]) or re_var(['bejegyz'],
-                                                                   vals[
-                                                                       0]) or re_var(
-                            ['change', 'request'], vals[0])):
-                        CR_d['General_information']['CR_number'] = vals[1]
-                        CR_d['General_information']['Reg_date'] = vals[2]
-                        continue
-
-                    if len(_temp_dict2.keys()) % 2 != 0:
-                        if len(_temp_dict2.keys()) == 1:
-                            _temp_dict2[list(_temp_dict2.keys())[0] + 1] = None
+                    if role_text and str(role_text).strip() not in ['None',
+                                                                    '']:
+                        role_str = str(role_text).replace('\n', ' ').strip()
+                        if re_var(['init'], role_str):
+                            if pos_name_val:
+                                CR_d['General_information']['Initiator'] = str(
+                                    pos_name_val)
                         else:
+                            CR_d['Approval'][role_str] = {
+                                'person': pos_name_val, 'date': date_val}
+                    continue
+
+            if section == 'Sup_doc' and re_var(['file', 'extension'],
+                                               first_text): continue
+            if section == 'General' and re_var(['general', 'inform'],
+                                               first_text): continue
+
+            if section in ['TDD', 'Other_TDD', 'SSC', 'Confirmation',
+                           'Approval']:
+                if section == 'Approval' and first_text and (
+                        re_var(['close'], first_text) or re_var(
+                        ['end', 'form'], first_text)):
+                    break
+
+                if first_text and (
+                        re_var(['code'], first_text) or re_var(['organ'],
+                                                               first_text) or re_var(
+                        ['posit'], first_text) or re_var(['role'],
+                                                         first_text)):
+                    _temp_dict = temp_dict_of_row(row, cells)
+                    continue
+
+                if not _temp_dict: continue
+
+                code = None
+                if section in ['TDD', 'Other_TDD', 'SSC']:
+                    code_keys = list(
+                        filter(lambda x: re_var(['code'], _temp_dict[x]),
+                               _temp_dict))
+                    if code_keys: code = cells.get((row, code_keys[0]))
+                elif section == 'Confirmation':
+                    code_keys = list(
+                        filter(lambda x: re_var(['organ'], _temp_dict[x]),
+                               _temp_dict))
+                    if code_keys: code = cells.get((row, code_keys[0]))
+                elif section == 'Approval':
+                    code_keys = list(
+                        filter(lambda x: re_var(['posit'],
+                                                _temp_dict[x]) or re_var(
+                            ['code'], _temp_dict[x]),
+                               _temp_dict))
+                    if code_keys: code = cells.get((row, code_keys[0]))
+
+                if not code:
+                    continue
+
+                if section == 'SSC':
+                    CR_d['SSC'][code] = {}
+                elif section == 'Confirmation':
+                    if code not in CR_d['Confirmation'].keys():
+                        CR_d['Confirmation'][code] = {}
+                elif section == 'Approval':
+                    if code not in CR_d['Approval'].keys():
+                        CR_d['Approval'][code] = {}
+                else:
+                    if code not in CR_d['TDD'].keys():
+                        CR_d['TDD'][code] = {}
+
+                for column_number in _temp_dict:
+                    insert_value = cells.get((row, column_number))
+                    if section in ['TDD', 'Other_TDD'] and insert_value:
+                        if re_var(['organ'], _temp_dict[column_number]):
+                            CR_d['TDD'][code][
+                                'Organization'] = insert_value
+                        elif re_var(['new', 'revision'],
+                                    _temp_dict[column_number]):
+                            _temp_bool = True if 'es' in str(
+                                insert_value).lower() else False
+                            CR_d['TDD'][code]['New_rev_req'] = _temp_bool
+                        elif re_var(['revision'],
+                                    _temp_dict[column_number]):
+                            if '_' in str(insert_value):
+                                CR_d['TDD'][code]['Revision'] = \
+                                    str(insert_value).split('_')[0]
+                                CR_d['TDD'][code]['Version'] = \
+                                    str(insert_value).split('_')[1]
+                            else:
+                                CR_d['TDD'][code][
+                                    'Revision'] = insert_value
+                                CR_d['TDD'][code]['Version'] = 0
+                        elif re_var(['name'], _temp_dict[column_number]):
+                            CR_d['TDD'][code]['Name'] = insert_value
+                        elif re_var(['state'], _temp_dict[column_number]):
+                            CR_d['TDD'][code]['Status'] = insert_value
+                        elif re_var(['description'],
+                                    _temp_dict[column_number]):
+                            if 'Description' not in CR_d['TDD'][
+                                code].keys():
+                                CR_d['TDD'][code]['Description'] = [
+                                    insert_value]
+                            else:
+                                CR_d['TDD'][code]['Description'].append(
+                                    insert_value)
+                        elif re_var(['impact'], _temp_dict[column_number]):
+                            list_of_factors = ''
+                            for factor in range(5):
+                                _temp_bin = '0' if re_var(['no'],
+                                                          cells.get((row,
+                                                                     column_number + factor))) else '1'
+                                list_of_factors += _temp_bin
+                            CR_d['TDD'][code]['Impact'] = int(
+                                list_of_factors, 2)
+                    elif section == 'SSC':
+                        if re_var(['name'], _temp_dict[column_number]):
+                            CR_d['SSC'][code]['Name'] = insert_value
+                        elif re_var(['description'],
+                                    _temp_dict[column_number]):
+                            CR_d['SSC'][code]['Description'] = insert_value
+                    elif section == 'Confirmation':
+                        if re_var(['posit'], _temp_dict[column_number]):
+                            position = insert_value
+                        elif re_var(['resp', 'pers'],
+                                    _temp_dict[column_number]) or re_var(
+                                ['name'], _temp_dict[column_number]):
+                            name = insert_value
+                            CR_d['Confirmation'][code][name] = {
+                                'Position': None, 'Date': None}
+                        elif re_var(['date'], _temp_dict[column_number]):
+                            date = insert_value
+                            if 'name' in locals() and name in \
+                                    CR_d['Confirmation'][code]:
+                                CR_d['Confirmation'][code][name][
+                                    'Position'] = locals().get('position')
+                                CR_d['Confirmation'][code][name]['Date'] = date
+                    elif section == 'Approval':
+                        if re_var(['person'],
+                                  _temp_dict[column_number]) or re_var(
+                                ['name'], _temp_dict[column_number]):
+                            CR_d['Approval'][code]['person'] = insert_value
+                        elif re_var(['date'], _temp_dict[column_number]):
+                            CR_d['Approval'][code]['date'] = insert_value
+
+            if section in ['General', 'Final', 'Nontech']:
+                if section == 'General' and first_text and (
+                        re_var(['descr', 'sol'], first_text) or re_var(
+                        ['descr', 'change'], first_text) or re_var(
+                        ['módosítások', 'leírása'], first_text)):
+                    CR_d['General_information']['Descr_tech_sol'] = cells.get(
+                        (row + 1, first_col))
+                    continue
+
+                _temp_dict2 = temp_dict_of_row(row, cells)
+                if not _temp_dict2:
+                    continue
+
+                vals = list(_temp_dict2.values())
+                if len(vals) >= 3 and (
+                        re_var(['registr'], vals[0]) or re_var(['bejegyz'],
+                                                               vals[
+                                                                   0]) or re_var(
+                        ['change', 'request'], vals[0])):
+                    CR_d['General_information']['CR_number'] = vals[1]
+                    CR_d['General_information']['Reg_date'] = vals[2]
+                    continue
+
+                if len(_temp_dict2.keys()) % 2 != 0:
+                    if len(_temp_dict2.keys()) == 1:
+                        _temp_dict2[list(_temp_dict2.keys())[0] + 0.1] = None
+                    else:
+                        if not any(map(lambda x: header_in_reg(
+                                _temp_dict2[list(_temp_dict2.keys())[-1]],
+                                x, dict_of_reg_value_local),
+                                       dict_of_reg_value_local.keys())):
+                            if not any(map(lambda x: header_in_reg(
+                                    _temp_dict2[list(_temp_dict2.keys())[-2]],
+                                    x,
+                                    dict_of_reg_value_local),
+                                           dict_of_reg_value_local.keys())):
+                                _temp_dict2.pop(list(_temp_dict2.keys())[-1])
+
+                _temp_temp_dict = {}
+                flag = False
+                key = 0
+                for item in list(sorted(_temp_dict2.keys())):
+                    if any(map(
+                            lambda x: header_in_reg(_temp_dict2[item], x,
+                                                    dict_of_reg_value_local),
+                            dict_of_reg_value_local.keys())):
+                        if flag == True:
+                            _temp_temp_dict[key + 0.1] = None
+                        _temp_temp_dict[item] = _temp_dict2[item]
+                        flag = True
+                        key = item
+                    else:
+                        if flag == True:
+                            _temp_temp_dict[item] = _temp_dict2[item]
                             flag = False
-                            key = 0
-                            for item in list(sorted(_temp_dict2.keys())):
-                                for position in dict_of_reg_value_CRD.keys():
-                                    if header_in_reg(_temp_dict2[item],
-                                                     position,
-                                                     dict_of_reg_value_CRD) and flag == False:
-                                        flag = True
-                                        key = item
-                                    elif header_in_reg(_temp_dict2[item],
-                                                       position,
-                                                       dict_of_reg_value_CRD) and flag == True:
-                                        _temp_dict2[key + 1] = None
+                if flag == True:
+                    _temp_temp_dict[key + 0.1] = None
+                _temp_dict2 = _temp_temp_dict
 
-                    if len(_temp_dict2) % 2 != 0 and _temp_dict2:
-                        _temp_dict2[max(_temp_dict2.keys()) + 1] = None
+                if len(_temp_dict2) % 2 != 0 and _temp_dict2:
+                    _temp_dict2[max(_temp_dict2.keys()) + 0.1] = None
 
-                    sorted_dict_keys = sorted(_temp_dict2.keys())
-                    _temp_dict2 = {
-                        _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
-                        for i, k in enumerate(sorted_dict_keys) if i % 2 == 0}
-                    for header in _temp_dict2.keys():
-                        for position in list(dict_of_reg_value_local.keys()):
-                            if header_in_reg(header, position,
-                                             dict_of_reg_value_CRD):
-                                CR_d['General_information'][position] = \
-                                    _temp_dict2[header]
-                                dict_of_reg_value_local.pop(position)
-                                break
-                    if section == 'Sup_doc' and first_text:
-                        curr_cell, CR_d['Supp_descr_docs'][
-                            first_text] = first_not_empty(
-                            (row, first_col + 1), cells, 'row')
+                sorted_dict_keys = sorted(_temp_dict2.keys())
+                _temp_dict2 = {
+                    _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
+                    for i, k in enumerate(sorted_dict_keys) if i % 2 == 0}
+                for header in _temp_dict2.keys():
+                    for position in list(dict_of_reg_value_local.keys()):
+                        if header_in_reg(header, position,
+                                         dict_of_reg_value_CRD):
+                            CR_d['General_information'][position] = \
+                                _temp_dict2[header]
+                            dict_of_reg_value_local.pop(position)
+                            break
+                if section == 'Sup_doc' and first_text:
+                    curr_cell, CR_d['Supp_descr_docs'][
+                        first_text] = first_not_empty((row, first_col + 1),
+                                                      cells, 'row')
 
     elif doc_mode == 'FCR':
         dict_of_reg_value_local = dict_of_reg_value_FCR.copy()
@@ -512,6 +549,7 @@ def main_func(table_name):
             'SSC': {}
         }
         section = 'General'
+        prev_section = 'General'
         subsection = False
         _descr_flag = 0
         _temp_dict = {}
@@ -586,265 +624,312 @@ def main_func(table_name):
                         re_var(['file', 'ext'], first_text) or re_var(
                     ['end', 'init'], first_text)): continue
 
-                if section in ['TDD', 'SSC', 'Approval']:
-                    if section == 'Close' and re_var(['end', 'form'],
-                                                     first_text):
-                        break
+            if section != prev_section:
+                _temp_dict = {}
+                prev_section = section
 
-                    if re_var(['code'], first_text) or re_var(['posit'],
-                                                              first_text):
-                        _temp_dict = temp_dict_of_row(row, cells)
-                        continue
+            is_bottom_up_sig = False
+            c_date = None
+            c_pos = None
 
-                    if not _temp_dict:
-                        continue
+            row_str = " ".join([str(cells.get((row, c))).lower() for c in
+                                range(1, last_cell[1] + 1) if
+                                cells.get((row, c))])
 
-                    code = None
-                    if section in ['TDD', 'SSC']:
-                        code_keys = list(
-                            filter(lambda x: re_var(['code'], _temp_dict[x]),
-                                   _temp_dict))
-                        if code_keys: code = cells.get((row, code_keys[0]))
-                    elif section == 'Approval':
-                        code_keys = list(
-                            filter(lambda x: re_var(['posit'], _temp_dict[x]),
-                                   _temp_dict))
-                        if code_keys: code = cells.get((row, code_keys[0]))
+            if ('signature' in row_str or 'aláírás' in row_str) and (
+                    'position' in row_str or 'beosztás' in row_str):
+                for col in range(1, last_cell[1] + 1):
+                    val = str(cells.get((row, col))).lower()
+                    if 'dd.mm.yyyy' in val or 'dátuma' in val or 'date' in val:
+                        c_date = col
+                    elif 'position' in val or 'beosztás' in val or 'name' in val or 'név' in val:
+                        c_pos = col
+                    elif 'signature' in val or 'aláírás' in val:
+                        is_bottom_up_sig = True
 
-                    if not code:
-                        continue
+                if is_bottom_up_sig and c_pos:
+                    role_text = cells.get((row - 1, 1))
+                    if not role_text:
+                        role_text = cells.get((row - 1, 2))
 
-                    if section == 'SSC':
-                        CR_d['SSC'][code] = {}
-                    elif section == 'Approval':
-                        CR_d['Approval'].append({'Position': code})
-                    else:
-                        if code not in CR_d['TDD_sets'].keys():
-                            CR_d['TDD_sets'][code] = {}
+                    date_val = cells.get((row - 1, c_date)) if c_date else None
+                    pos_name_val = cells.get((row - 1, c_pos))
 
-                    for column_number in _temp_dict:
-                        insert_value = cells.get((row, column_number))
-                        if section == 'TDD' and insert_value:
-                            if re_var(['set', 'revis'],
-                                      _temp_dict[column_number]):
-                                if '_' in str(insert_value):
-                                    CR_d['TDD_sets'][code]['Revision'] = \
-                                        str(insert_value).split('_')[0]
-                                    CR_d['TDD_sets'][code]['Version'] = \
-                                        str(insert_value).split('_')[1]
-                                else:
-                                    CR_d['TDD_sets'][code][
-                                        'Revision'] = insert_value
-                                    CR_d['TDD_sets'][code]['Version'] = 0
-                            if re_var(['engin', 'cod'],
-                                      _temp_dict[column_number]):
-                                doc_code = insert_value
-                                if 'Documents' not in CR_d['TDD_sets'][
-                                    code].keys():
-                                    CR_d['TDD_sets'][code]['Documents'] = [
-                                        {'Code': doc_code}]
-                                if doc_code not in list(
-                                        map(lambda x: x['Code'],
-                                            CR_d['TDD_sets'][code][
-                                                'Documents'])):
-                                    CR_d['TDD_sets'][code]['Documents'].append(
-                                        {'Code': doc_code})
-                            if re_var(['engin', 'name'],
-                                      _temp_dict[column_number]):
-                                index_of_doc_code = [index for index, value in
-                                                     enumerate(
-                                                         CR_d['TDD_sets'][
-                                                             code][
-                                                             'Documents']) if
-                                                     value[
-                                                         'Code'] == doc_code][
-                                    0]
+                    if role_text and str(role_text).strip() not in ['None',
+                                                                    '']:
+                        role_str = str(role_text).replace('\n', ' ').strip()
+                        if re_var(['init'], role_str):
+                            if pos_name_val:
+                                CR_d['General_information']['Initiator'] = str(
+                                    pos_name_val)
+                        else:
+                            CR_d['Approval'].append(
+                                {'Position': role_str, 'Name': pos_name_val,
+                                 'Date': date_val})
+                    continue
+
+            if section in ['TDD', 'SSC', 'Approval']:
+                if section == 'Close' and first_text and re_var(
+                        ['end', 'form'], first_text):
+                    break
+
+                if first_text and (
+                        re_var(['code'], first_text) or re_var(['posit'],
+                                                               first_text) or re_var(
+                        ['role'], first_text)):
+                    _temp_dict = temp_dict_of_row(row, cells)
+                    continue
+
+                if not _temp_dict:
+                    continue
+
+                code = None
+                if section in ['TDD', 'SSC']:
+                    code_keys = list(
+                        filter(lambda x: re_var(['code'], _temp_dict[x]),
+                               _temp_dict))
+                    if code_keys: code = cells.get((row, code_keys[0]))
+                elif section == 'Approval':
+                    code_keys = list(
+                        filter(lambda x: re_var(['posit'],
+                                                _temp_dict[x]) or re_var(
+                            ['code'], _temp_dict[x]),
+                               _temp_dict))
+                    if code_keys: code = cells.get((row, code_keys[0]))
+
+                if not code:
+                    continue
+
+                if section == 'SSC':
+                    CR_d['SSC'][code] = {}
+                elif section == 'Approval':
+                    CR_d['Approval'].append({'Position': code})
+                else:
+                    if code not in CR_d['TDD_sets'].keys():
+                        CR_d['TDD_sets'][code] = {}
+
+                for column_number in _temp_dict:
+                    insert_value = cells.get((row, column_number))
+                    if section == 'TDD' and insert_value:
+                        if re_var(['set', 'revis'],
+                                  _temp_dict[column_number]):
+                            if '_' in str(insert_value):
+                                CR_d['TDD_sets'][code]['Revision'] = \
+                                    str(insert_value).split('_')[0]
+                                CR_d['TDD_sets'][code]['Version'] = \
+                                    str(insert_value).split('_')[1]
+                            else:
+                                CR_d['TDD_sets'][code][
+                                    'Revision'] = insert_value
+                                CR_d['TDD_sets'][code]['Version'] = 0
+                        if re_var(['engin', 'cod'],
+                                  _temp_dict[column_number]):
+                            doc_code = insert_value
+                            if 'Documents' not in CR_d['TDD_sets'][
+                                code].keys():
+                                CR_d['TDD_sets'][code]['Documents'] = [
+                                    {'Code': doc_code}]
+                            if doc_code not in list(
+                                    map(lambda x: x['Code'],
+                                        CR_d['TDD_sets'][code][
+                                            'Documents'])):
+                                CR_d['TDD_sets'][code]['Documents'].append(
+                                    {'Code': doc_code})
+                        if re_var(['engin', 'name'],
+                                  _temp_dict[column_number]):
+                            index_of_doc_code = [index for index, value in
+                                                 enumerate(
+                                                     CR_d['TDD_sets'][
+                                                         code][
+                                                         'Documents']) if
+                                                 value[
+                                                     'Code'] == doc_code][
+                                0]
+                            CR_d['TDD_sets'][code]['Documents'][
+                                index_of_doc_code]['Name'] = insert_value
+                        if re_var(['revis', 'ED'],
+                                  _temp_dict[column_number]) or re_var(
+                            ['ED', 'revis'],
+                            _temp_dict[column_number]):
+                            if '_' in str(insert_value):
                                 CR_d['TDD_sets'][code]['Documents'][
-                                    index_of_doc_code]['Name'] = insert_value
-                            if re_var(['revis', 'ED'],
-                                      _temp_dict[column_number]) or re_var(
-                                ['ED', 'revis'],
-                                _temp_dict[column_number]):
-                                if '_' in str(insert_value):
+                                    index_of_doc_code]['Revision'] = \
+                                    str(insert_value).split('_')[0]
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code]['Version'] = \
+                                    str(insert_value).split('_')[1]
+                            else:
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code][
+                                    'Revision'] = insert_value
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code]['Version'] = 0
+                        if re_var(['sheets'], _temp_dict[column_number]):
+                            sheets = str(insert_value)
+                            if 'Sheets' not in \
                                     CR_d['TDD_sets'][code]['Documents'][
-                                        index_of_doc_code]['Revision'] = \
-                                        str(insert_value).split('_')[0]
-                                    CR_d['TDD_sets'][code]['Documents'][
-                                        index_of_doc_code]['Version'] = \
-                                        str(insert_value).split('_')[1]
-                                else:
+                                        index_of_doc_code]:
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code]['Sheets'] = {}
+                            if sheets not in \
                                     CR_d['TDD_sets'][code]['Documents'][
                                         index_of_doc_code][
-                                        'Revision'] = insert_value
-                                    CR_d['TDD_sets'][code]['Documents'][
-                                        index_of_doc_code]['Version'] = 0
-                            if re_var(['sheets'], _temp_dict[column_number]):
-                                sheets = str(insert_value)
-                                if 'Sheets' not in \
-                                        CR_d['TDD_sets'][code]['Documents'][
-                                            index_of_doc_code]:
-                                    CR_d['TDD_sets'][code]['Documents'][
-                                        index_of_doc_code]['Sheets'] = {}
-                                if sheets not in \
-                                        CR_d['TDD_sets'][code]['Documents'][
-                                            index_of_doc_code][
-                                            'Sheets'].keys():
+                                        'Sheets'].keys():
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code]['Sheets'][
+                                    sheets] = {}
+                        if re_var(['chang', 'amx'],
+                                  _temp_dict[column_number]):
+                            if 'AMX' not in \
                                     CR_d['TDD_sets'][code]['Documents'][
                                         index_of_doc_code]['Sheets'][
-                                        sheets] = {}
-                            if re_var(['chang', 'amx'],
-                                      _temp_dict[column_number]):
-                                if 'AMX' not in \
-                                        CR_d['TDD_sets'][code]['Documents'][
-                                            index_of_doc_code]['Sheets'][
-                                            sheets].keys():
-                                    CR_d['TDD_sets'][code]['Documents'][
-                                        index_of_doc_code]['Sheets'][sheets][
-                                        'AMX'] = insert_value
-                                else:
-                                    if insert_value not in \
-                                            CR_d['TDD_sets'][code][
-                                                'Documents'][
-                                                index_of_doc_code]['Sheets'][
-                                                sheets]['AMX']:
-                                        CR_d['TDD_sets'][code]['Documents'][
-                                            index_of_doc_code]['Sheets'][
-                                            sheets][
-                                            'AMX'] += f'\n{insert_value}'
-                            if re_var(['description'],
-                                      _temp_dict[column_number]):
-                                if 'Description' not in \
-                                        CR_d['TDD_sets'][code]['Documents'][
-                                            index_of_doc_code]['Sheets'][
-                                            sheets].keys():
-                                    CR_d['TDD_sets'][code]['Documents'][
-                                        index_of_doc_code]['Sheets'][sheets][
-                                        'Description'] = [insert_value]
-                                else:
-                                    CR_d['TDD_sets'][code]['Documents'][
-                                        index_of_doc_code]['Sheets'][sheets][
-                                        'Description'].append(insert_value)
-                        if section == 'SSC':
-                            if re_var(['system', 'code'],
-                                      _temp_dict[column_number]):
-                                CR_d['SSC'][code]['Sys_code'] = insert_value
-                            elif re_var(['component'],
-                                        _temp_dict[column_number]):
-                                CR_d['SSC'][code]['Component'] = insert_value
-                        if section == 'Approval':
-                            if re_var(['person'],
-                                      _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]):
-                                CR_d['Approval'][-1]['Name'] = insert_value
-                            elif re_var(['date'], _temp_dict[column_number]):
-                                CR_d['Approval'][-1]['Date'] = insert_value
-
-                if section in ['General', 'Concurrence', 'Close'] or (
-                        section == 'Evaluation' and subsection != 'JD'):
-                    if section == 'General' and re_var(
-                            ['descrip', 'engin', 'change'], first_text):
-                        CR_d['General_information'][
-                            'Descr_tech_sol'] = cells.get((row + 1, first_col))
-                        _descr_flag = 1
-                    if section == 'Evaluation' and re_var(
-                            ['comment', 'reason', 'reject'], first_text):
-                        CR_d['General_information']['Evaluation'][
-                            'Reject_comment'] = cells.get((row + 1, first_col))
-                        _descr_flag = 1
-                    if section == 'Evaluation' and re_var(
-                            ['comment', 'reason', 'refus'], first_text):
-                        CR_d['General_information']['Evaluation'][
-                            'Refuse_comment'] = cells.get((row + 1, first_col))
-                        _descr_flag = 1
-
-                    _temp_dict2 = temp_dict_of_row(row, cells)
-                    if not _temp_dict2:
-                        continue
-
-                    if len(_temp_dict2.keys()) % 2 != 0:
-                        if len(_temp_dict2.keys()) == 1:
-                            _temp_dict2[list(_temp_dict2.keys())[0] + 1] = None
-                        else:
-                            if not any(map(lambda x: header_in_reg(
-                                    _temp_dict2[list(_temp_dict2.keys())[-1]],
-                                    x, dict_of_reg_value_FCR),
-                                           dict_of_reg_value_FCR.keys())):
-                                if not any(map(lambda x: header_in_reg(
-                                        _temp_dict2[
-                                            list(_temp_dict2.keys())[-2]], x,
-                                        dict_of_reg_value_FCR),
-                                               dict_of_reg_value_FCR.keys())):
-                                    _temp_dict2.pop(
-                                        list(_temp_dict2.keys())[-1])
-
-                    _temp_temp_dict = {}
-                    flag = False
-                    key = 0
-                    for item in list(sorted(_temp_dict2.keys())):
-                        if any(map(
-                                lambda x: header_in_reg(_temp_dict2[item], x,
-                                                        dict_of_reg_value_FCR),
-                                dict_of_reg_value_FCR.keys())):
-                            if flag == True:
-                                _temp_temp_dict[key + 1] = None
-                            _temp_temp_dict[item] = _temp_dict2[item]
-                            flag = True
-                            key = item
-                        else:
-                            if flag == True:
-                                _temp_temp_dict[item] = _temp_dict2[item]
-                                flag = False
-                    if flag == True:
-                        _temp_temp_dict[key + 1] = None
-                    _temp_dict2 = _temp_temp_dict
-
-                    if len(_temp_dict2) % 2 != 0 and _temp_dict2:
-                        _temp_dict2[max(_temp_dict2.keys()) + 1] = None
-
-                    sorted_dict_keys = sorted(_temp_dict2.keys())
-                    _temp_dict2 = {
-                        _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
-                        for i, k in enumerate(sorted_dict_keys) if i % 2 == 0}
-
-                    for header in _temp_dict2.keys():
-                        for position in list(dict_of_reg_value_local.keys()):
-                            if header_in_reg(header, position,
-                                             dict_of_reg_value_FCR):
-                                if section == 'Evaluation':
-                                    CR_d['General_information']['Evaluation'][
-                                        position] = _temp_dict2[header]
-                                else:
-                                    CR_d['General_information'][position] = \
-                                        _temp_dict2[header]
-                                dict_of_reg_value_local.pop(position)
-                                break
-
-                    if section == 'Sup_doc' or (
-                            section == 'Evaluation' and subsection == 'JD'):
-                        if section == 'Sup_doc':
-                            if first_text in CR_d['Supp_descr_docs'].keys():
-                                CR_d['Supp_descr_docs'][
-                                    first_text]['Title'].append(
-                                    first_not_empty((row, first_col + 1),
-                                                    cells, 'row')[1])
+                                        sheets].keys():
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code]['Sheets'][sheets][
+                                    'AMX'] = insert_value
                             else:
-                                curr_cell, curr_cell_value = first_not_empty(
-                                    (row, first_col + 1), cells, 'row')
-                                if curr_cell_value:
-                                    CR_d['Supp_descr_docs'][
-                                        first_text] = {
-                                        'Title': [curr_cell_value]}
-                            if 'JD' not in CR_d['General_information'][
-                                'Evaluation']:
+                                if insert_value not in \
+                                        CR_d['TDD_sets'][code][
+                                            'Documents'][
+                                            index_of_doc_code]['Sheets'][
+                                            sheets]['AMX']:
+                                    CR_d['TDD_sets'][code]['Documents'][
+                                        index_of_doc_code]['Sheets'][
+                                        sheets][
+                                        'AMX'] += f'\n{insert_value}'
+                        if re_var(['description'],
+                                  _temp_dict[column_number]):
+                            if 'Description' not in \
+                                    CR_d['TDD_sets'][code]['Documents'][
+                                        index_of_doc_code]['Sheets'][
+                                        sheets].keys():
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code]['Sheets'][sheets][
+                                    'Description'] = [insert_value]
+                            else:
+                                CR_d['TDD_sets'][code]['Documents'][
+                                    index_of_doc_code]['Sheets'][sheets][
+                                    'Description'].append(insert_value)
+                    if section == 'SSC':
+                        if re_var(['system', 'code'],
+                                  _temp_dict[column_number]):
+                            CR_d['SSC'][code]['Sys_code'] = insert_value
+                        elif re_var(['component'],
+                                    _temp_dict[column_number]):
+                            CR_d['SSC'][code]['Component'] = insert_value
+                    if section == 'Approval':
+                        if re_var(['person'],
+                                  _temp_dict[column_number]) or re_var(
+                            ['name'], _temp_dict[column_number]):
+                            CR_d['Approval'][-1]['Name'] = insert_value
+                        elif re_var(['date'], _temp_dict[column_number]):
+                            CR_d['Approval'][-1]['Date'] = insert_value
+
+            if section in ['General', 'Concurrence', 'Close'] or (
+                    section == 'Evaluation' and subsection != 'JD'):
+                if section == 'General' and first_text and re_var(
+                        ['descrip', 'engin', 'change'], first_text):
+                    CR_d['General_information']['Descr_tech_sol'] = cells.get(
+                        (row + 1, first_col))
+                    _descr_flag = 1
+                if section == 'Evaluation' and first_text and re_var(
+                        ['comment', 'reason', 'reject'], first_text):
+                    CR_d['General_information']['Evaluation'][
+                        'Reject_comment'] = cells.get((row + 1, first_col))
+                    _descr_flag = 1
+                if section == 'Evaluation' and first_text and re_var(
+                        ['comment', 'reason', 'refus'], first_text):
+                    CR_d['General_information']['Evaluation'][
+                        'Refuse_comment'] = cells.get((row + 1, first_col))
+                    _descr_flag = 1
+
+                _temp_dict2 = temp_dict_of_row(row, cells)
+                if not _temp_dict2:
+                    continue
+
+                if len(_temp_dict2.keys()) % 2 != 0:
+                    if len(_temp_dict2.keys()) == 1:
+                        _temp_dict2[list(_temp_dict2.keys())[0] + 0.1] = None
+                    else:
+                        if not any(map(lambda x: header_in_reg(
+                                _temp_dict2[list(_temp_dict2.keys())[-1]],
+                                x, dict_of_reg_value_local),
+                                       dict_of_reg_value_local.keys())):
+                            if not any(map(lambda x: header_in_reg(
+                                    _temp_dict2[
+                                        list(_temp_dict2.keys())[-2]], x,
+                                    dict_of_reg_value_local),
+                                           dict_of_reg_value_local.keys())):
+                                _temp_dict2.pop(
+                                    list(_temp_dict2.keys())[-1])
+
+                _temp_temp_dict = {}
+                flag = False
+                key = 0
+                for item in list(sorted(_temp_dict2.keys())):
+                    if any(map(
+                            lambda x: header_in_reg(_temp_dict2[item], x,
+                                                    dict_of_reg_value_local),
+                            dict_of_reg_value_local.keys())):
+                        if flag == True:
+                            _temp_temp_dict[key + 0.1] = None
+                        _temp_temp_dict[item] = _temp_dict2[item]
+                        flag = True
+                        key = item
+                    else:
+                        if flag == True:
+                            _temp_temp_dict[item] = _temp_dict2[item]
+                            flag = False
+                if flag == True:
+                    _temp_temp_dict[key + 0.1] = None
+                _temp_dict2 = _temp_temp_dict
+
+                if len(_temp_dict2) % 2 != 0 and _temp_dict2:
+                    _temp_dict2[max(_temp_dict2.keys()) + 0.1] = None
+
+                sorted_dict_keys = sorted(_temp_dict2.keys())
+                _temp_dict2 = {
+                    _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
+                    for i, k in enumerate(sorted_dict_keys) if i % 2 == 0}
+
+                for header in _temp_dict2.keys():
+                    for position in list(dict_of_reg_value_local.keys()):
+                        if header_in_reg(header, position,
+                                         dict_of_reg_value_local):
+                            if doc_mode == 'FCR' and section == 'Evaluation':
                                 CR_d['General_information']['Evaluation'][
-                                    'JD'] = {}
-                            curr_cell, \
-                                CR_d['General_information']['Evaluation'][
-                                    'JD'][
-                                    first_text] = first_not_empty(
+                                    position] = _temp_dict2[header]
+                            else:
+                                CR_d['General_information'][position] = \
+                                _temp_dict2[header]
+                            dict_of_reg_value_local.pop(position)
+                            break
+
+                if section == 'Sup_doc' or (
+                        section == 'Evaluation' and subsection == 'JD'):
+                    if section == 'Sup_doc':
+                        if first_text in CR_d['Supp_descr_docs'].keys():
+                            CR_d['Supp_descr_docs'][
+                                first_text]['Title'].append(
+                                first_not_empty((row, first_col + 1), cells,
+                                                'row')[1])
+                        else:
+                            curr_cell, curr_cell_value = first_not_empty(
                                 (row, first_col + 1), cells, 'row')
-                            if re_var(['type', 'change'], first_text):
-                                subsection = False
+                            if curr_cell_value:
+                                CR_d['Supp_descr_docs'][
+                                    first_text] = {
+                                    'Title': [curr_cell_value]}
+                        if 'JD' not in CR_d['General_information'][
+                            'Evaluation']:
+                            CR_d['General_information']['Evaluation'][
+                                'JD'] = {}
+                        curr_cell, \
+                            CR_d['General_information']['Evaluation']['JD'][
+                                first_text] = first_not_empty(
+                            (row, first_col + 1), cells, 'row')
+                        if re_var(['type', 'change'], first_text):
+                            subsection = False
 
             if not first_text and section == 'Concurrence':
                 section = 'Approval'
@@ -867,6 +952,7 @@ def main_func(table_name):
                                     'Change_type': None}, 'Confirmation': {},
             'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {}}
         section = 'General'
+        prev_section = 'General'
         _temp_dict = {}
 
         for row in range(first_cell[0], last_cell[0] + 1):
@@ -886,7 +972,6 @@ def main_func(table_name):
                     first_col = col
                     break
 
-            # ГИБКИЕ ПЕРЕХОДЫ МЕЖДУ РАЗДЕЛАМИ
             if first_text:
                 header_text = first_text
                 if re_var(['init', 'item'], header_text) or re_var(
@@ -909,23 +994,72 @@ def main_func(table_name):
                                                                 header_text):
                     section = 'Approval'
 
-            if section in ['TDD', 'Configur', 'SSC', 'Confirmation',
-                           'Approval'] and first_text and (
-                    re_var(['code'], first_text) or re_var(['posit'],
-                                                           first_text)):
-                _temp_dict = temp_dict_of_row(row, cells)
-                if section == 'SSC':
-                    not_empty = \
-                    first_not_empty((row, first_col + 1), cells, 'row')[0]
-                    if not_empty:
-                        cell_of_DSA = \
-                        first_not_empty((not_empty[0], not_empty[1] + 1),
-                                        cells, 'row')[1]
-                        CR_d['General_information']['Impact_DSA'] = cell_of_DSA
-                continue
+            if section != prev_section:
+                _temp_dict = {}
+                prev_section = section
+
+            is_bottom_up_sig = False
+            c_date = None
+            c_pos = None
+
+            row_str = " ".join([str(cells.get((row, c))).lower() for c in
+                                range(1, last_cell[1] + 1) if
+                                cells.get((row, c))])
+
+            if ('signature' in row_str or 'aláírás' in row_str) and (
+                    'position' in row_str or 'beosztás' in row_str):
+                for col in range(1, last_cell[1] + 1):
+                    val = str(cells.get((row, col))).lower()
+                    if 'dd.mm.yyyy' in val or 'dátuma' in val or 'date' in val:
+                        c_date = col
+                    elif 'position' in val or 'beosztás' in val or 'name' in val or 'név' in val:
+                        c_pos = col
+                    elif 'signature' in val or 'aláírás' in val:
+                        is_bottom_up_sig = True
+
+                if is_bottom_up_sig and c_pos:
+                    role_text = cells.get((row - 1, 1))
+                    if not role_text:
+                        role_text = cells.get((row - 1, 2))
+
+                    date_val = cells.get((row - 1, c_date)) if c_date else None
+                    pos_name_val = cells.get((row - 1, c_pos))
+
+                    if role_text and str(role_text).strip() not in ['None',
+                                                                    '']:
+                        role_str = str(role_text).replace('\n', ' ').strip()
+                        if re_var(['init'], role_str):
+                            if pos_name_val:
+                                CR_d['General_information']['Initiator'] = str(
+                                    pos_name_val)
+                        else:
+                            CR_d['Approval'][role_str] = {
+                                'person': pos_name_val, 'date': date_val}
+                    continue
 
             if section in ['TDD', 'Configur', 'SSC', 'Confirmation',
                            'Approval']:
+                if section == 'Approval' and first_text and (
+                        re_var(['close'], first_text) or re_var(
+                        ['end', 'form'], first_text)):
+                    break
+
+                if first_text and (
+                        re_var(['code'], first_text) or re_var(['posit'],
+                                                               first_text) or re_var(
+                        ['role'], first_text)):
+                    _temp_dict = temp_dict_of_row(row, cells)
+                    if section == 'SSC':
+                        not_empty = \
+                        first_not_empty((row, first_col + 1), cells, 'row')[0]
+                        if not_empty:
+                            cell_of_DSA = \
+                            first_not_empty((not_empty[0], not_empty[1] + 1),
+                                            cells, 'row')[1]
+                            CR_d['General_information'][
+                                'Impact_DSA'] = cell_of_DSA
+                    continue
+
                 if not _temp_dict: continue
 
                 code = None
@@ -943,7 +1077,6 @@ def main_func(table_name):
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
 
-                # Собираем инициатора ДАЖЕ ЕСЛИ поле Code(Должность) пустует
                 if section in ['Approval', 'Confirmation']:
                     for column_number in _temp_dict:
                         if re_var(['init'], _temp_dict[column_number]):
@@ -1067,22 +1200,42 @@ def main_func(table_name):
 
                 if len(_temp_dict2.keys()) % 2 != 0:
                     if len(_temp_dict2.keys()) == 1:
-                        _temp_dict2[list(_temp_dict2.keys())[0] + 1] = None
+                        _temp_dict2[list(_temp_dict2.keys())[0] + 0.1] = None
                     else:
-                        flag = False
-                        key = 0
-                        for item in list(sorted(_temp_dict2.keys())):
-                            for position in dict_of_reg_value_CR.keys():
-                                if header_in_reg(_temp_dict2[item], position,
-                                                 dict_of_reg_value_CR) and flag == False:
-                                    flag = True
-                                    key = item
-                                elif header_in_reg(_temp_dict2[item], position,
-                                                   dict_of_reg_value_CR) and flag == True:
-                                    _temp_dict2[key + 1] = None
+                        if not any(map(lambda x: header_in_reg(
+                                _temp_dict2[list(_temp_dict2.keys())[-1]],
+                                x, dict_of_reg_value_local),
+                                       dict_of_reg_value_local.keys())):
+                            if not any(map(lambda x: header_in_reg(
+                                    _temp_dict2[list(_temp_dict2.keys())[-2]],
+                                    x,
+                                    dict_of_reg_value_local),
+                                           dict_of_reg_value_local.keys())):
+                                _temp_dict2.pop(list(_temp_dict2.keys())[-1])
+
+                _temp_temp_dict = {}
+                flag = False
+                key = 0
+                for item in list(sorted(_temp_dict2.keys())):
+                    if any(map(
+                            lambda x: header_in_reg(_temp_dict2[item], x,
+                                                    dict_of_reg_value_local),
+                            dict_of_reg_value_local.keys())):
+                        if flag == True:
+                            _temp_temp_dict[key + 0.1] = None
+                        _temp_temp_dict[item] = _temp_dict2[item]
+                        flag = True
+                        key = item
+                    else:
+                        if flag == True:
+                            _temp_temp_dict[item] = _temp_dict2[item]
+                            flag = False
+                if flag == True:
+                    _temp_temp_dict[key + 0.1] = None
+                _temp_dict2 = _temp_temp_dict
 
                 if len(_temp_dict2) % 2 != 0 and _temp_dict2:
-                    _temp_dict2[max(_temp_dict2.keys()) + 1] = None
+                    _temp_dict2[max(_temp_dict2.keys()) + 0.1] = None
 
                 sorted_dict_keys = sorted(_temp_dict2.keys())
                 _temp_dict2 = {
