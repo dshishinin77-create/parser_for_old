@@ -248,7 +248,9 @@ def main_func(table_name):
 
             if first_text:
                 header_text = first_text
-                if re_var(['supporting', 'descr'], header_text):
+                if re_var(['supporting', 'descr'], header_text) or re_var(
+                        ['support', 'file'], header_text) or re_var(
+                        ['melléklet'], header_text):
                     section = 'Sup_doc'
                 elif re_var(['list', 'document', 'proposed'],
                             header_text) or re_var(
@@ -273,7 +275,8 @@ def main_func(table_name):
                     section = 'Confirmation'
                 elif re_var(['approv'], header_text) or re_var(['agreed'],
                                                                header_text) or re_var(
-                        ['согласовано'], header_text):
+                        ['согласовано'], header_text) or re_var(['signat'],
+                                                                header_text):
                     section = 'Approval'
 
             if section != prev_section:
@@ -318,11 +321,6 @@ def main_func(table_name):
                             CR_d['Approval'][role_str] = {
                                 'person': pos_name_val, 'date': date_val}
                     continue
-
-            if section == 'Sup_doc' and re_var(['file', 'extension'],
-                                               first_text): continue
-            if section == 'General' and re_var(['general', 'inform'],
-                                               first_text): continue
 
             if section in ['TDD', 'Other_TDD', 'SSC', 'Confirmation',
                            'Approval', 'Proposed_docs']:
@@ -395,14 +393,9 @@ def main_func(table_name):
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = \
                                 str(insert_value).split('_')[0]
-                                CR_d['List of documents proposed change'][
-                                    code]['Version'] = \
-                                str(insert_value).split('_')[1]
                             else:
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = insert_value
-                                CR_d['List of documents proposed change'][
-                                    code]['Version'] = 0
                         elif re_var(['name'],
                                     _temp_dict[column_number]) or re_var(
                                 ['megnevezés'],
@@ -484,13 +477,23 @@ def main_func(table_name):
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['date'] = insert_value
 
-            if section in ['General', 'Final', 'Nontech']:
+            elif section == 'Sup_doc':
+                if first_text and not (
+                        re_var(['file', 'name'], first_text) or re_var(
+                        ['details', 'document'], first_text) or re_var(
+                        ['dokumentumok', 'adatai'], first_text)):
+                    curr_cell, val = first_not_empty((row, first_col + 1),
+                                                     cells, 'row')
+                    if val:
+                        CR_d['Supp_descr_docs'][first_text] = val
+
+            elif section in ['General', 'Final', 'Nontech']:
                 if section == 'General' and first_text and (
                         re_var(['descr', 'sol'], first_text) or re_var(
                         ['descr', 'change'], first_text) or re_var(
                         ['módosítások', 'leírása'], first_text)):
                     CR_d['General_information']['Descr_tech_sol'] = \
-                    first_not_empty((row + 1, 1), cells, 'row')[1]
+                    first_not_empty((row + 1, first_col), cells, 'row')[1]
                     continue
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
@@ -558,11 +561,6 @@ def main_func(table_name):
                             CR_d['General_information'][position] = value
                             dict_of_reg_value_local.pop(position)
                             break
-
-                if section == 'Sup_doc' and first_text:
-                    curr_cell, CR_d['Supp_descr_docs'][
-                        first_text] = first_not_empty((row, first_col + 1),
-                                                      cells, 'row')
 
     elif doc_mode == 'FCR':
         dict_of_reg_value_local = dict_of_reg_value_FCR.copy()
@@ -730,9 +728,7 @@ def main_func(table_name):
                 code = None
                 if section in ['TDD', 'SSC']:
                     code_keys = list(
-                        filter(lambda x: re_var(['code'],
-                                                _temp_dict[x]) or re_var(
-                            ['kód'], _temp_dict[x]),
+                        filter(lambda x: re_var(['code'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
                 elif section == 'Approval':
@@ -871,7 +867,38 @@ def main_func(table_name):
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][-1]['Date'] = insert_value
 
-            if section in ['General', 'Concurrence', 'Close'] or (
+            elif section == 'Sup_doc' or (
+                    doc_mode == 'FCR' and section == 'Evaluation' and subsection == 'JD'):
+                if first_text and not (
+                        re_var(['file', 'name'], first_text) or re_var(
+                        ['details', 'document'], first_text) or re_var(
+                        ['dokumentumok', 'adatai'], first_text)):
+                    if section == 'Sup_doc':
+                        if first_text in CR_d['Supp_descr_docs'].keys():
+                            curr_cell, val = first_not_empty(
+                                (row, first_col + 1), cells, 'row')
+                            if val:
+                                CR_d['Supp_descr_docs'][first_text][
+                                    'Title'].append(val)
+                        else:
+                            curr_cell, val = first_not_empty(
+                                (row, first_col + 1), cells, 'row')
+                            if val:
+                                CR_d['Supp_descr_docs'][first_text] = {
+                                    'Title': [val]}
+                    if section == 'Evaluation' and subsection == 'JD':
+                        if 'JD' not in CR_d['General_information'][
+                            'Evaluation']:
+                            CR_d['General_information']['Evaluation'][
+                                'JD'] = {}
+                        curr_cell, \
+                        CR_d['General_information']['Evaluation']['JD'][
+                            first_text] = first_not_empty((row, first_col + 1),
+                                                          cells, 'row')
+                        if re_var(['type', 'change'], first_text):
+                            subsection = False
+
+            elif section in ['General', 'Concurrence', 'Close'] or (
                     section == 'Evaluation' and subsection != 'JD'):
                 if section == 'General' and first_text and re_var(
                         ['descrip', 'engin', 'change'], first_text):
@@ -893,27 +920,6 @@ def main_func(table_name):
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
                 if not _temp_dict2:
-                    continue
-
-                vals = list(_temp_dict2.values())
-
-                if section == 'General':
-                    for i, v in enumerate(vals):
-                        v_str = str(v).lower()
-                        if (
-                                'number of building' in v_str or 'építmény száma' in v_str):
-                            if i + 1 < len(vals) and vals[i + 1]:
-                                bld_val = str(vals[i + 1]).strip()
-                                if bld_val and bld_val not in CR_d['SSC']:
-                                    CR_d['SSC'][bld_val] = {}
-
-                if len(vals) == 3 and (
-                        re_var(['registr'], vals[0]) or re_var(['bejegyz'],
-                                                               vals[
-                                                                   0]) or re_var(
-                        ['change', 'request'], vals[0])):
-                    CR_d['General_information']['CR_number'] = vals[1]
-                    CR_d['General_information']['Reg_date'] = vals[2]
                     continue
 
                 sorted_keys = sorted(_temp_dict2.keys())
@@ -961,35 +967,6 @@ def main_func(table_name):
                             dict_of_reg_value_local.pop(position)
                             break
 
-                if section == 'Sup_doc' or (
-                        section == 'Evaluation' and subsection == 'JD'):
-                    if section == 'Sup_doc':
-                        if first_text in CR_d['Supp_descr_docs'].keys():
-                            CR_d['Supp_descr_docs'][
-                                first_text]['Title'].append(
-                                first_not_empty((row, first_col + 1), cells,
-                                                'row')[1])
-                        else:
-                            curr_cell, curr_cell_value = first_not_empty(
-                                (row, first_col + 1), cells, 'row')
-                            if curr_cell_value:
-                                CR_d['Supp_descr_docs'][
-                                    first_text] = {
-                                    'Title': [curr_cell_value]}
-                        if 'JD' not in CR_d['General_information'][
-                            'Evaluation']:
-                            CR_d['General_information']['Evaluation'][
-                                'JD'] = {}
-                        curr_cell, \
-                            CR_d['General_information']['Evaluation']['JD'][
-                                first_text] = first_not_empty(
-                            (row, first_col + 1), cells, 'row')
-                        if re_var(['type', 'change'], first_text):
-                            subsection = False
-
-            if not first_text and section == 'Concurrence':
-                section = 'Approval'
-
     elif doc_mode == 'CR':
         dict_of_reg_value_local = dict_of_reg_value_CR.copy()
 
@@ -1007,7 +984,7 @@ def main_func(table_name):
                                     'Document_type': None,
                                     'Change_type': None}, 'Confirmation': {},
             'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {},
-            'List of documents proposed change': {}}
+            'List of documents proposed change': {}, 'Supp_descr_docs': {}}
         section = 'General'
         prev_section = 'General'
         _temp_dict = {}
@@ -1031,7 +1008,12 @@ def main_func(table_name):
 
             if first_text:
                 header_text = first_text
-                if re_var(['init', 'item'], header_text) or re_var(
+                if re_var(['supporting', 'descr'], header_text) or re_var(
+                        ['support', 'file'], header_text) or re_var(
+                        ['melléklet'], header_text) or re_var(['csatolva'],
+                                                              header_text):
+                    section = 'Sup_doc'
+                elif re_var(['init', 'item'], header_text) or re_var(
                         ['scope', 'change'], header_text):
                     section = 'TDD'
                 elif re_var(['list', 'document', 'proposed'],
@@ -1171,12 +1153,12 @@ def main_func(table_name):
                 elif section == 'Approval':
                     if code not in CR_d['Approval'].keys():
                         CR_d['Approval'][code] = {}
-                elif section == 'Configur':
-                    CR_d['Configur'][code] = {}
                 elif section == 'Proposed_docs':
                     if code not in list(
                             CR_d['List of documents proposed change'].keys()):
                         CR_d['List of documents proposed change'][code] = {}
+                elif section == 'Configur':
+                    CR_d['Configur'][code] = {}
                 else:
                     if code not in list(CR_d['TDD'].keys()):
                         CR_d['TDD'][code] = {}
@@ -1195,14 +1177,9 @@ def main_func(table_name):
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = \
                                 str(insert_value).split('_')[0]
-                                CR_d['List of documents proposed change'][
-                                    code]['Version'] = \
-                                str(insert_value).split('_')[1]
                             else:
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = insert_value
-                                CR_d['List of documents proposed change'][
-                                    code]['Version'] = 0
                         elif re_var(['name'],
                                     _temp_dict[column_number]) or re_var(
                                 ['megnevezés'],
@@ -1279,6 +1256,16 @@ def main_func(table_name):
                             CR_d['Approval'][code]['person'] = insert_value
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['date'] = insert_value
+
+            elif section == 'Sup_doc':
+                if first_text and not (
+                        re_var(['file', 'name'], first_text) or re_var(
+                        ['details', 'document'], first_text) or re_var(
+                        ['dokumentumok', 'adatai'], first_text)):
+                    curr_cell, val = first_not_empty((row, first_col + 1),
+                                                     cells, 'row')
+                    if val:
+                        CR_d['Supp_descr_docs'][first_text] = val
 
             elif section in ['General', 'Nontech']:
                 if section == 'General' and first_text and (
