@@ -121,8 +121,9 @@ dict_of_reg_value_FCR = {
     'SS': ['struct', 'geom']
 }
 
+# --- ОБНОВЛЕННЫЕ СЛОВАРИ ДЛЯ CRD И CR С ПОДДЕРЖКОЙ НОВЫХ ПОЛЕЙ И ВЕНГЕРСКОГО ЯЗЫКА ---
 dict_of_reg_value_CRD = {
-    'CR_number': [['change', 'request'], ['init']],
+    'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'CR_coordinator': ['contr', 'coord'],
     'CR_number_int': ['init', 'intern'],
     'Organization': [['init', 'organ'], ['organ', 'intern']],
@@ -132,12 +133,15 @@ dict_of_reg_value_CRD = {
     'Contract': ['contract'],
     'Impact_cost': ['cost', 'impact'],
     'Schedule': ['schedul'],
-    'Comment_nont': ['comment', 'non']
+    'Comment_nont': ['comment', 'non'],
+    'Constr_facility': [['(object.*construct|építkezés)'], []],
+    'Reason_code': [['(reason.*code|okának.*kódja)'], []],
+    'CR_reason': [['(other.*reason|egyéb.*okok)'], []]
 }
 
 dict_of_reg_value_CR = {
-    'CR_number': [['change', 'request'], ['init']],
-    'Organization': ['init', 'organ'],
+    'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
+    'Organization': [['init', 'organ'], ['organ', 'intern']],
     'Responsible': ['responsible', 'eval'],
     'Initiator': [['init'], ['organ', 'intern']],
     'CR_coordinator': ['contr', 'coord'],
@@ -145,8 +149,15 @@ dict_of_reg_value_CR = {
     'Contract': ['contract'],
     'Impact_cost': ['cost', 'impact'],
     'Schedule': ['schedul'],
-    'Comment_nont': ['comment', 'non']
+    'Comment_nont': ['comment', 'non'],
+    'Constr_facility': [['(object.*construct|építkezés)'], []],
+    'Reason_code': [['(reason.*code|okának.*kódja)'], []],
+    'CR_reason': [['(other.*reason|egyéb.*okok)'], []],
+    'Descr_tech_sol': ['descr', 'sol']
 }
+
+
+# -----------------------------------------------------------------------------------
 
 
 def main_func(table_name):
@@ -192,7 +203,10 @@ def main_func(table_name):
                                     'Impact_DSA': None, 'Method_CR': None,
                                     'Comment': None, 'Contract': None,
                                     'Impact_cost': None, 'Schedule': None,
-                                    'Comment_nont': None}, 'Confirmation': {},
+                                    'Comment_nont': None, 'Reg_date': None,
+                                    'Constr_facility': None,
+                                    'Reason_code': None,
+                                    'Change_type': None}, 'Confirmation': {},
             'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {}}
         section = 'General'
         _temp_dict = {}
@@ -355,6 +369,19 @@ def main_func(table_name):
 
                 if section in ['General', 'Final', 'Nontech']:
                     _temp_dict2 = temp_dict_of_row(row, cells)
+                    if not _temp_dict2:
+                        continue
+
+                    # --- СПЕЦИАЛЬНЫЙ ПЕРЕХВАТЧИК ДЛЯ ДАТЫ РЕГИСТРАЦИИ (Без заголовка) ---
+                    vals = list(_temp_dict2.values())
+                    if len(vals) >= 3 and (
+                            re_var(['registr'], vals[0]) or re_var(['bejegyz'],
+                                                                   vals[0])):
+                        CR_d['General_information']['CR_number'] = vals[1]
+                        CR_d['General_information']['Reg_date'] = vals[2]
+                        continue
+                    # --------------------------------------------------------------------
+
                     if len(_temp_dict2.keys()) % 2 != 0:
                         if len(_temp_dict2.keys()) == 1:
                             _temp_dict2[list(_temp_dict2.keys())[0] + 1] = None
@@ -373,10 +400,8 @@ def main_func(table_name):
                                                        dict_of_reg_value_CRD) and flag == True:
                                         _temp_dict2[key + 1] = None
 
-                    # --- ИСПРАВЛЕНИЕ ОШИБКИ IndexError ---
                     if len(_temp_dict2) % 2 != 0 and _temp_dict2:
                         _temp_dict2[max(_temp_dict2.keys()) + 1] = None
-                    # -------------------------------------
 
                     sorted_dict_keys = sorted(_temp_dict2.keys())
                     _temp_dict2 = {
@@ -669,6 +694,9 @@ def main_func(table_name):
                         _descr_flag = 1
 
                     _temp_dict2 = temp_dict_of_row(row, cells)
+                    if not _temp_dict2:
+                        continue
+
                     if len(_temp_dict2.keys()) % 2 != 0:
                         if len(_temp_dict2.keys()) == 1:
                             _temp_dict2[list(_temp_dict2.keys())[0] + 1] = None
@@ -706,10 +734,8 @@ def main_func(table_name):
                         _temp_temp_dict[key + 1] = None
                     _temp_dict2 = _temp_temp_dict
 
-                    # --- ИСПРАВЛЕНИЕ ОШИБКИ IndexError ---
                     if len(_temp_dict2) % 2 != 0 and _temp_dict2:
                         _temp_dict2[max(_temp_dict2.keys()) + 1] = None
-                    # -------------------------------------
 
                     sorted_dict_keys = sorted(_temp_dict2.keys())
                     _temp_dict2 = {
@@ -762,13 +788,19 @@ def main_func(table_name):
 
     elif doc_mode == 'CR':
         dict_of_reg_value_local = dict_of_reg_value_CR.copy()
+        # Добавлена инициализация новых полей, чтобы не было ошибок
         CR_d = {
             'General_information': {'CR_number': None, 'Organization': None,
                                     'Initiator': None, 'Responsible': None,
                                     'Impact_DSA': None, 'CR_coordinator': None,
                                     'CR_number_int': None, 'Contract': None,
                                     'Impact_cost': None, 'Schedule': None,
-                                    'Comment_nont': None}, 'Confirmation': {},
+                                    'Comment_nont': None, 'Reg_date': None,
+                                    'Constr_facility': None,
+                                    'Reason_code': None,
+                                    'CR_reason': None, 'Descr_tech_sol': None,
+                                    'Document_type': None,
+                                    'Change_type': None}, 'Confirmation': {},
             'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {}}
         section = 'General'
         _temp_dict = {}
@@ -915,6 +947,19 @@ def main_func(table_name):
 
             elif section in ['General', 'Nontech']:
                 _temp_dict2 = temp_dict_of_row(row, cells)
+                if not _temp_dict2:
+                    continue
+
+                # --- СПЕЦИАЛЬНЫЙ ПЕРЕХВАТЧИК ДЛЯ ДАТЫ РЕГИСТРАЦИИ (Без заголовка) ---
+                vals = list(_temp_dict2.values())
+                if len(vals) >= 3 and (
+                        re_var(['registr'], vals[0]) or re_var(['bejegyz'],
+                                                               vals[0])):
+                    CR_d['General_information']['CR_number'] = vals[1]
+                    CR_d['General_information']['Reg_date'] = vals[2]
+                    continue
+                # --------------------------------------------------------------------
+
                 if len(_temp_dict2.keys()) % 2 != 0:
                     if len(_temp_dict2.keys()) == 1:
                         _temp_dict2[list(_temp_dict2.keys())[0] + 1] = None
@@ -931,10 +976,8 @@ def main_func(table_name):
                                                    dict_of_reg_value_CR) and flag == True:
                                     _temp_dict2[key + 1] = None
 
-                # --- ИСПРАВЛЕНИЕ ОШИБКИ IndexError ---
                 if len(_temp_dict2) % 2 != 0 and _temp_dict2:
                     _temp_dict2[max(_temp_dict2.keys()) + 1] = None
-                # -------------------------------------
 
                 sorted_dict_keys = sorted(_temp_dict2.keys())
                 _temp_dict2 = {
@@ -972,28 +1015,47 @@ def dicts_normalization(original_dict_name):
     original_dict = result[original_dict_name].copy()
     normalized_dict['File_name'] = original_dict_name
 
+    # --- ИЗМЕНЕНА ЛОГИКА ЭКСПОРТА: ТЕПЕРЬ ПОЛЯ НЕ ЗАТИРАЮТСЯ ---
     if 'TDD' in original_dict:
-        normalized_dict['Change_request_No'] = \
-            original_dict['General_information']['CR_number']
-        normalized_dict['Reg_date'] = normalized_dict['Contr_change_coord'] = \
-            normalized_dict['Type_of_changes'] = normalized_dict[
-            'Constr_facility'] = normalized_dict['Type_of_changed_doc'] = \
-            normalized_dict['E-log?'] = None
-        normalized_dict['Ini_org'] = original_dict['General_information'][
-            'Organization']
-        normalized_dict['Change_ini'] = original_dict['General_information'][
-            'Initiator']
-        normalized_dict['Ini_internal_CR'] = normalized_dict[
-            'Cod_of_reason'] = None
-        normalized_dict['Other_reason'] = '\n'.join(
-            filter(lambda x: x is not None, list(
-                map(lambda x: original_dict['TDD'][x]['Reason'] if 'Reason' in
-                                                                   original_dict[
-                                                                       'TDD'][
-                                                                       x] else None,
-                    original_dict['TDD']))))
-        normalized_dict['Descr_of_change'] = normalized_dict[
-            'Rel_to_prev_CR'] = normalized_dict['Approval_method'] = \
+        normalized_dict['Change_request_No'] = original_dict[
+            'General_information'].get('CR_number')
+        normalized_dict['Reg_date'] = original_dict['General_information'].get(
+            'Reg_date')
+        normalized_dict['Contr_change_coord'] = original_dict[
+            'General_information'].get('CR_coordinator')
+        normalized_dict['Type_of_changes'] = original_dict[
+            'General_information'].get('Change_type')
+        normalized_dict['Constr_facility'] = original_dict[
+            'General_information'].get('Constr_facility')
+        normalized_dict['Type_of_changed_doc'] = original_dict[
+            'General_information'].get('Document_type')
+        normalized_dict['E-log?'] = None
+
+        normalized_dict['Ini_org'] = original_dict['General_information'].get(
+            'Organization')
+        normalized_dict['Change_ini'] = original_dict[
+            'General_information'].get('Initiator')
+        normalized_dict['Ini_internal_CR'] = original_dict[
+            'General_information'].get('CR_number_int')
+        normalized_dict['Cod_of_reason'] = original_dict[
+            'General_information'].get('Reason_code')
+
+        # Берем причину из общих данных, если её там нет — собираем из таблиц TDD
+        other_reason = original_dict['General_information'].get('CR_reason')
+        if not other_reason:
+            other_reason = '\n'.join(
+                filter(lambda x: x is not None, list(
+                    map(lambda x: original_dict['TDD'][x].get(
+                        'Reason') if 'Reason' in original_dict['TDD'][
+                        x] else None,
+                        original_dict['TDD']))))
+        normalized_dict['Other_reason'] = other_reason
+
+        normalized_dict['Descr_of_change'] = original_dict[
+            'General_information'].get('Descr_tech_sol')
+
+        normalized_dict['Rel_to_prev_CR'] = normalized_dict[
+            'Approval_method'] = \
             normalized_dict['Just_simple'] = normalized_dict[
             'NSC_category'] = None
         normalized_dict['Impact_direct_123'] = True if original_dict[
@@ -1009,13 +1071,13 @@ def dicts_normalization(original_dict_name):
             'Material_equivalent?'] = normalized_dict[
             'Comments_eng_eval'] = None
         normalized_dict['Impact_contract'] = \
-            original_dict['General_information']['Contract']
-        normalized_dict['Impact_cost'] = original_dict['General_information'][
-            'Impact_cost']
-        normalized_dict['Impact_schedule'] = \
-            original_dict['General_information']['Schedule']
-        normalized_dict['Comments_nont_ass'] = \
-            original_dict['General_information']['Comment_nont']
+            original_dict['General_information'].get('Contract')
+        normalized_dict['Impact_cost'] = original_dict[
+            'General_information'].get('Impact_cost')
+        normalized_dict['Impact_schedule'] = original_dict[
+            'General_information'].get('Schedule')
+        normalized_dict['Comments_nont_ass'] = original_dict[
+            'General_information'].get('Comment_nont')
 
         for key in original_dict['Confirmation']:
             _temp_dict = {}
