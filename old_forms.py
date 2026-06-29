@@ -3,6 +3,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment, PatternFill, Font, Border, Side
 import re
 import os
+import sys
 import copy
 import datetime
 import json
@@ -166,7 +167,6 @@ def main_func(table_name):
     last_cell = list(cells.keys())[-1]
     first_cell = first_cell_def(cells)
 
-    # --- НОВАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ ТИПА ДОКУМЕНТА ПО СОДЕРЖИМОМУ ---
     text_dump = " ".join([str(cells[k]).lower() for k in cells if cells[k]])
 
     if 'cr.d' in text_dump or 'fcr.d' in text_dump or 'impact on tdd' in text_dump:
@@ -178,7 +178,6 @@ def main_func(table_name):
     else:
         doc_mode = 'CR'
         print("    Определен тип: CR")
-    # -------------------------------------------------------------
 
     if doc_mode == 'CRD':
         dict_of_reg_value_local = dict_of_reg_value_CRD.copy()
@@ -1596,32 +1595,51 @@ class excel_formating:
 
 def output(option):
     global result
+
+    # --- УМНОЕ ОПРЕДЕЛЕНИЕ ПАПКИ ---
+    # Позволяет всегда искать файлы там, где лежит сам скрипт (даже если он стал .exe),
+    # независимо от того, как ты его запустил
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
     if option == 0:
         excel_path = 'D:\\!Digital_twin\\!CR\\CR_parser\\cr_test\\18_05\\'
     else:
         if option == 'pwd':
-            excel_path = ''
+            excel_path = base_dir + '\\'
         else:
-            excel_path = input(
+            user_input = input(
                 'Введите ПОЛНЫЙ путь к папке с файлами (или нажмите Enter для текущей папки): ')
-            if excel_path and excel_path[-1] != '\\':
-                excel_path += '\\'
+            if user_input.strip() == '':
+                excel_path = base_dir + '\\'
+            else:
+                excel_path = user_input
+                if excel_path and excel_path[-1] != '\\':
+                    excel_path += '\\'
 
-    # --- ИЗМЕНЕН ФИЛЬТР ФАЙЛОВ ---
-    # Теперь скрипт ищет любые .xls и .xlsx, игнорируя скрытые временные файлы, начинающиеся с "~$"
-    all_files = os.listdir(path=excel_path if excel_path else '.')
+    print(f"\nИщем файлы в папке: {excel_path}")
+
+    try:
+        all_files = os.listdir(path=excel_path)
+    except Exception as e:
+        print(f"Ошибка при доступе к папке: {e}")
+        return
+
+    # --- УЛУЧШЕННЫЙ ФИЛЬТР ---
+    # .lower() делает так, что код видит и .xlsx, и .XLSX
     list_of_tables = list(filter(
-        lambda x: (x.endswith('.xls') or x.endswith(
+        lambda x: (x.lower().endswith('.xls') or x.lower().endswith(
             '.xlsx')) and not x.startswith('~$'),
         all_files
     ))
 
-    print(f"\nНайдено файлов Excel к обработке: {len(list_of_tables)}")
+    print(f"Найдено файлов Excel к обработке: {len(list_of_tables)}")
     if len(list_of_tables) == 0:
         print(
-            "В текущей папке нет файлов формата .xls или .xlsx для обработки.")
+            "В указанной папке нет файлов формата .xls или .xlsx для обработки.")
         return
-    # -----------------------------
 
     result = {}
 
@@ -1630,14 +1648,12 @@ def output(option):
         result[file] = main_func(full_path)
 
     if option == 0:
-        # Для режима отладки, если вдруг он нужен
         for file in result:
             a = dicts_normalization(file)
             from_diff_to_union_excel(a)
     else:
         for dictus in result:
             if result.get(dictus):
-                # Распаковка битов для TDD
                 for code in result[dictus].get('TDD', {}):
                     if 'Impact' in result[dictus]['TDD'][code] and isinstance(
                             result[dictus]['TDD'][code]['Impact'], int):
@@ -1661,7 +1677,6 @@ def output(option):
 
 
 if __name__ == '__main__':
-    # --- ДОБАВЛЕНА ЗАЩИТА ОТ ЗАКРЫТИЯ КОНСОЛИ ---
     try:
         output('pwd')
     except Exception as e:
