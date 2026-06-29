@@ -146,10 +146,8 @@ dict_of_reg_value_CRD = {
     'Comment_nont': ['comment', 'non'],
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
-    'Reason_code': [['(reason.*code|okának.*kódja)'], []],
-    'CR_reason': [
-        ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
-        ['code']],
+    'Reason_code': [['(reason|okának)'], ['other', 'egyéb']],
+    'CR_reason': [['(other|egyéb)'], []],
     'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
@@ -166,10 +164,8 @@ dict_of_reg_value_CR = {
     'Comment_nont': ['comment', 'non'],
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
-    'Reason_code': [['(reason.*code|okának.*kódja)'], []],
-    'CR_reason': [
-        ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
-        ['code']],
+    'Reason_code': [['(reason|okának)'], ['other', 'egyéb']],
+    'CR_reason': [['(other|egyéb)'], []],
     'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
@@ -455,6 +451,18 @@ def main_func(table_name):
                     continue
 
                 vals = list(_temp_dict2.values())
+
+                # Исключили "Name of structure", оставили только "Number of building"
+                if section == 'General':
+                    for i, v in enumerate(vals):
+                        v_str = str(v).lower()
+                        if (
+                                'number of building' in v_str or 'építmény száma' in v_str):
+                            if i + 1 < len(vals) and vals[i + 1]:
+                                bld_val = str(vals[i + 1]).strip()
+                                if bld_val and bld_val not in CR_d['SSC']:
+                                    CR_d['SSC'][bld_val] = {}
+
                 if len(vals) >= 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
                                                                vals[
@@ -1191,7 +1199,7 @@ def main_func(table_name):
                         ['descr', 'change'], first_text) or re_var(
                         ['módosítások', 'leírása'], first_text)):
                     CR_d['General_information']['Descr_tech_sol'] = \
-                    first_not_empty((row + 1, 1), cells, 'row')[1]
+                    first_not_empty((row + 1, first_col), cells, 'row')[1]
                     continue
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
@@ -1200,18 +1208,17 @@ def main_func(table_name):
 
                 vals = list(_temp_dict2.values())
 
-                # --- ПЕРЕХВАТ ДЛЯ SSC (Строка 11: Number of building / Name of structure) ---
+                # --- ИСКЛЮЧИЛИ "NAME OF STRUCTURE", ОСТАВИЛИ ТОЛЬКО "NUMBER OF BUILDING" ---
                 if section == 'General':
                     for i, v in enumerate(vals):
                         v_str = str(v).lower()
                         if (
-                                'number of building' in v_str or 'építmény száma' in v_str or
-                                'name of structure' in v_str or 'építmény megnevezése' in v_str):
+                                'number of building' in v_str or 'építmény száma' in v_str):
                             if i + 1 < len(vals) and vals[i + 1]:
                                 bld_val = str(vals[i + 1]).strip()
                                 if bld_val and bld_val not in CR_d['SSC']:
                                     CR_d['SSC'][bld_val] = {}
-                # ------------------------------------------------------------------------------
+                # -------------------------------------------------------------------------
 
                 if len(vals) >= 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
