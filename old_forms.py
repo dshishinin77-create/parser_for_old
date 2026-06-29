@@ -64,17 +64,29 @@ def header_in_reg(header, position, dict_of_reg):
 
 def temp_dict_of_row(row, cells):
     _temp_dict = {}
-    cell = (row, 1)
-    if cell not in cells:
+    if not cells:
         return _temp_dict
-    value = cells[cell]
+
     last_cell = list(cells.keys())[-1]
+    first_col = None
+
+    # Находим первую непустую ячейку в строке, игнорируя отступы слева
+    for col in range(1, last_cell[1] + 1):
+        if cells.get((row, col)):
+            first_col = col
+            break
+
+    if not first_col:
+        return _temp_dict
+
+    cell = (row, first_col)
+    value = cells[cell]
 
     while cell and cell[1] <= last_cell[1]:
         _temp_dict[cell[1]] = value
         cell = (cell[0], cell[1] + 1)
         cell, value = first_not_empty(cell, cells, 'row')
-        if not cell:
+        if not cell or cell[0] != row:
             break
     return _temp_dict
 
@@ -221,8 +233,16 @@ def main_func(table_name):
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
                 continue
 
-            if cells.get((row, 1)):
-                header_text = str(cells[row, 1])
+            first_text = None
+            first_col = 1
+            for col in range(1, last_cell[1] + 1):
+                if cells.get((row, col)):
+                    first_text = str(cells.get((row, col)))
+                    first_col = col
+                    break
+
+            if first_text:
+                header_text = first_text
                 if re_var(['supporting', 'descr'], header_text):
                     section = 'Sup_doc'
                 elif re_var(['impact', 'init', 'TDD'], header_text):
@@ -241,13 +261,15 @@ def main_func(table_name):
                     section = 'Nontech'
                 elif re_var(['confirmat'], header_text):
                     section = 'Confirmation'
-                elif re_var(['approv'], header_text):
+                elif re_var(['approv'], header_text) or re_var(['agreed'],
+                                                               header_text) or re_var(
+                        ['согласовано'], header_text):
                     section = 'Approval'
 
                 if section == 'Sup_doc' and re_var(['file', 'extension'],
-                                                   cells[row, 1]): continue
+                                                   first_text): continue
                 if section == 'General' and re_var(['general', 'inform'],
-                                                   cells[row, 1]): continue
+                                                   first_text): continue
 
                 if section in ['TDD', 'Other_TDD', 'SSC', 'Confirmation',
                                'Approval']:
@@ -255,12 +277,13 @@ def main_func(table_name):
                             filter(lambda x: x.size['columns'] == last_cell[
                                 1] and x.start_cell.row == row,
                                    list(ws.merged_cells.ranges))) or \
-                            str(cells[row, 1])[0] == '*':
+                            (first_text and first_text[0] == '*'):
                         break
 
-                    if re_var(['code'], cells.get((row, 1))) or re_var(
-                            ['organ'], cells.get((row, 1))) or re_var(
-                        ['posit'], cells.get((row, 1))):
+                    if first_text and (
+                            re_var(['code'], first_text) or re_var(['organ'],
+                                                                   first_text) or re_var(
+                            ['posit'], first_text)):
                         _temp_dict = temp_dict_of_row(row, cells)
                         continue
 
@@ -294,7 +317,8 @@ def main_func(table_name):
                         if code not in CR_d['Confirmation'].keys():
                             CR_d['Confirmation'][code] = {}
                     elif section == 'Approval':
-                        CR_d['Approval'][code] = {}
+                        if code not in CR_d['Approval'].keys():
+                            CR_d['Approval'][code] = {}
                     else:
                         if code not in CR_d['TDD'].keys():
                             CR_d['TDD'][code] = {}
@@ -354,8 +378,9 @@ def main_func(table_name):
                                 position = insert_value
                             elif re_var(['resp', 'pers'],
                                         _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]) or re_var(
-                                ['approv'], _temp_dict[column_number]):
+                                    ['name'],
+                                    _temp_dict[column_number]) or re_var(
+                                    ['approv'], _temp_dict[column_number]):
                                 name = insert_value
                                 CR_d['Confirmation'][code][name] = {
                                     'Position': None, 'Date': None}
@@ -453,10 +478,10 @@ def main_func(table_name):
                                     _temp_dict2[header]
                                 dict_of_reg_value_local.pop(position)
                                 break
-                    if section == 'Sup_doc':
+                    if section == 'Sup_doc' and first_text:
                         curr_cell, CR_d['Supp_descr_docs'][
-                            str(cells.get((row, 1)))] = first_not_empty(
-                            (row, 2), cells, 'row')
+                            first_text] = first_not_empty(
+                            (row, first_col + 1), cells, 'row')
 
     elif doc_mode == 'FCR':
         dict_of_reg_value_local = dict_of_reg_value_FCR.copy()
@@ -504,66 +529,70 @@ def main_func(table_name):
                     section = 'Approval'
                 continue
 
-            if cells.get((row, 1)):
+            first_text = None
+            first_col = 1
+            for col in range(1, last_cell[1] + 1):
+                if cells.get((row, col)):
+                    first_text = str(cells.get((row, col)))
+                    first_col = col
+                    break
+
+            if first_text:
                 if section == 'General' and re_var(['affect', 'ssc'],
-                                                   cells[row, 1]):
+                                                   first_text):
                     section = 'SSC'
                 elif section == 'SSC' and re_var(['list', 'rel', 'doc'],
-                                                 cells[row, 1]):
+                                                 first_text):
                     section = 'TDD'
                 elif section == 'TDD' and re_var(['supp', 'descr'],
-                                                 cells[row, 1]):
+                                                 first_text):
                     section = 'Sup_doc'
                 elif section == 'Sup_doc' and re_var(['evaluat', 'of'],
-                                                     cells[row, 1]):
+                                                     first_text):
                     section = 'Evaluation'
                 elif section == 'Evaluation' and re_var(['linc', 'doc'],
-                                                        cells[row, 1]):
+                                                        first_text):
                     subsection = 'JD'
                 elif section == 'Evaluation' and re_var(['concur', 'sheet'],
-                                                        cells[row, 1]):
+                                                        first_text):
                     section = 'Concurrence'
-                elif section == 'Approval' and re_var(['close'],
-                                                      cells[row, 1]):
+                elif section == 'Approval' and re_var(['close'], first_text):
                     section = 'Close'
 
                 if section == 'SSC' and re_var(['not', 'spec'],
-                                               cells[row, 1]): continue
+                                               first_text): continue
                 if section == 'SSC' and re_var(['cod', 'SSC', 'n/a'],
-                                               cells[row, 1]): continue
+                                               first_text): continue
                 if section == 'TDD' and re_var(['set', 'which'],
-                                               cells[row, 1]): continue
+                                               first_text): continue
                 if section == 'Evaluation' and re_var(['type', 'of', 'change'],
-                                                      cells[row, 1]): continue
+                                                      first_text): continue
                 if section == 'Evaluation' and re_var(['crit', 'imp'],
-                                                      cells[row, 1]): continue
+                                                      first_text): continue
                 if section == 'Evaluation' and subsection == 'JD' and re_var(
-                        ['file', 'extension'], cells[row, 1]): continue
+                    ['file', 'extension'], first_text): continue
                 if section == 'General' and re_var(['field', 'change', 'fcr'],
-                                                   cells[row, 1]): continue
+                                                   first_text): continue
                 if section == 'General' and re_var(['change', 'init', 'for'],
-                                                   cells[row, 1]): continue
+                                                   first_text): continue
 
-                if section == 'General' and _descr_flag == 1:
-                    _descr_flag = 0
-                if section == 'Evaluation' and _descr_flag == 1:
-                    _descr_flag = 0
+                if section == 'General' and _descr_flag == 1: _descr_flag = 0
+                if section == 'Evaluation' and _descr_flag == 1: _descr_flag = 0
 
                 if section == 'Approval' and re_var(['\\*', '\\*\\*'],
-                                                    cells[row, 1], stop_words=[
-                            '\\*\\*\\*']): continue
+                                                    first_text, stop_words=[
+                        '\\*\\*\\*']): continue
                 if section == 'Sup_doc' and (
-                        re_var(['file', 'ext'], cells[row, 1]) or re_var(
-                    ['end', 'init'], cells[row, 1])): continue
+                        re_var(['file', 'ext'], first_text) or re_var(
+                    ['end', 'init'], first_text)): continue
 
                 if section in ['TDD', 'SSC', 'Approval']:
                     if section == 'Close' and re_var(['end', 'form'],
-                                                     cells[row, 1]):
+                                                     first_text):
                         break
 
-                    if re_var(['code'], cells[row, 1]) or re_var(['posit'],
-                                                                 cells[
-                                                                     row, 1]):
+                    if re_var(['code'], first_text) or re_var(['posit'],
+                                                              first_text):
                         _temp_dict = temp_dict_of_row(row, cells)
                         continue
 
@@ -713,22 +742,19 @@ def main_func(table_name):
                 if section in ['General', 'Concurrence', 'Close'] or (
                         section == 'Evaluation' and subsection != 'JD'):
                     if section == 'General' and re_var(
-                            ['descrip', 'engin', 'change'],
-                            cells.get((row, 1))):
+                            ['descrip', 'engin', 'change'], first_text):
                         CR_d['General_information'][
-                            'Descr_tech_sol'] = cells.get((row + 1, 1))
+                            'Descr_tech_sol'] = cells.get((row + 1, first_col))
                         _descr_flag = 1
                     if section == 'Evaluation' and re_var(
-                            ['comment', 'reason', 'reject'],
-                            cells.get((row, 1))):
+                            ['comment', 'reason', 'reject'], first_text):
                         CR_d['General_information']['Evaluation'][
-                            'Reject_comment'] = cells.get((row + 1, 1))
+                            'Reject_comment'] = cells.get((row + 1, first_col))
                         _descr_flag = 1
                     if section == 'Evaluation' and re_var(
-                            ['comment', 'reason', 'refus'],
-                            cells.get((row, 1))):
+                            ['comment', 'reason', 'refus'], first_text):
                         CR_d['General_information']['Evaluation'][
-                            'Refuse_comment'] = cells.get((row + 1, 1))
+                            'Refuse_comment'] = cells.get((row + 1, first_col))
                         _descr_flag = 1
 
                     _temp_dict2 = temp_dict_of_row(row, cells)
@@ -796,17 +822,17 @@ def main_func(table_name):
                     if section == 'Sup_doc' or (
                             section == 'Evaluation' and subsection == 'JD'):
                         if section == 'Sup_doc':
-                            if str(cells.get((row, 1))) in CR_d[
-                                'Supp_descr_docs'].keys():
+                            if first_text in CR_d['Supp_descr_docs'].keys():
                                 CR_d['Supp_descr_docs'][
-                                    str(cells.get((row, 1)))]['Title'].append(
-                                    first_not_empty((row, 2), cells, 'row')[1])
+                                    first_text]['Title'].append(
+                                    first_not_empty((row, first_col + 1),
+                                                    cells, 'row')[1])
                             else:
                                 curr_cell, curr_cell_value = first_not_empty(
-                                    (row, 2), cells, 'row')
+                                    (row, first_col + 1), cells, 'row')
                                 if curr_cell_value:
                                     CR_d['Supp_descr_docs'][
-                                        str(cells.get((row, 1)))] = {
+                                        first_text] = {
                                         'Title': [curr_cell_value]}
                             if 'JD' not in CR_d['General_information'][
                                 'Evaluation']:
@@ -815,19 +841,17 @@ def main_func(table_name):
                             curr_cell, \
                                 CR_d['General_information']['Evaluation'][
                                     'JD'][
-                                    str(cells.get(
-                                        (row, 1)))] = first_not_empty(
-                                (row, 2), cells, 'row')
-                            if re_var(['type', 'change'], cells.get((row, 1))):
+                                    first_text] = first_not_empty(
+                                (row, first_col + 1), cells, 'row')
+                            if re_var(['type', 'change'], first_text):
                                 subsection = False
 
-            if not cells.get((row, 1)) and section == 'Concurrence':
+            if not first_text and section == 'Concurrence':
                 section = 'Approval'
 
     elif doc_mode == 'CR':
         dict_of_reg_value_local = dict_of_reg_value_CR.copy()
 
-        # --- СТРОГО ТВОЙ ПОРЯДОК СЛОВАРЯ ---
         CR_d = {
             'General_information': {'CR_number': None, 'Reg_date': None,
                                     'Initiator': None,
@@ -844,7 +868,6 @@ def main_func(table_name):
             'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {}}
         section = 'General'
         _temp_dict = {}
-        # ------------------------------------
 
         for row in range(first_cell[0], last_cell[0] + 1):
             if list(filter(
@@ -855,39 +878,49 @@ def main_func(table_name):
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
                 continue
 
-            if section == 'General' and re_var(['init', 'item'],
-                                               cells.get((row, 1))):
-                section = 'TDD'
-            elif section == 'TDD' and re_var(['conf', 'item'],
-                                             cells.get((row, 1))):
-                section = 'Configur'
-            elif section == 'Configur' and re_var(['affect', 'syst'],
-                                                  cells.get((row, 1))):
-                section = 'SSC'
-            elif section == 'SSC' and re_var(['confirmat'],
-                                             cells.get((row, 1))):
-                section = 'Confirmation'
-            elif section == 'Confirmation' and (
-                    re_var(['non-tech'], cells.get((row, 1))) or re_var(
-                ['nontech'], cells.get((row, 1)))):
-                section = 'Nontech'
-            elif section == 'Nontech' and re_var(['approv'],
-                                                 cells.get((row, 1))):
-                section = 'Approval'
+            first_text = None
+            first_col = 1
+            for col in range(1, last_cell[1] + 1):
+                if cells.get((row, col)):
+                    first_text = str(cells.get((row, col)))
+                    first_col = col
+                    break
+
+            # ГИБКИЕ ПЕРЕХОДЫ МЕЖДУ РАЗДЕЛАМИ
+            if first_text:
+                header_text = first_text
+                if re_var(['init', 'item'], header_text) or re_var(
+                        ['scope', 'change'], header_text):
+                    section = 'TDD'
+                elif re_var(['conf', 'item'], header_text):
+                    section = 'Configur'
+                elif re_var(['affect', 'syst'], header_text) or re_var(
+                        ['affect', 'ssc'], header_text) or re_var(
+                        ['changed', 'ssc'], header_text):
+                    section = 'SSC'
+                elif re_var(['confirmat'], header_text):
+                    section = 'Confirmation'
+                elif re_var(['non-tech'], header_text) or re_var(['nontech'],
+                                                                 header_text):
+                    section = 'Nontech'
+                elif re_var(['approv'], header_text) or re_var(['agreed'],
+                                                               header_text) or re_var(
+                        ['согласовано'], header_text) or re_var(['signat'],
+                                                                header_text):
+                    section = 'Approval'
 
             if section in ['TDD', 'Configur', 'SSC', 'Confirmation',
-                           'Approval'] and (
-                    re_var(['code'], cells.get((row, 1))) or re_var(['posit'],
-                                                                    cells.get((
-                                                                            row,
-                                                                            1)))):
+                           'Approval'] and first_text and (
+                    re_var(['code'], first_text) or re_var(['posit'],
+                                                           first_text)):
                 _temp_dict = temp_dict_of_row(row, cells)
                 if section == 'SSC':
-                    not_empty = first_not_empty((row, 2), cells, 'row')[0]
+                    not_empty = \
+                    first_not_empty((row, first_col + 1), cells, 'row')[0]
                     if not_empty:
                         cell_of_DSA = \
-                            first_not_empty((not_empty[0], not_empty[1] + 1),
-                                            cells, 'row')[1]
+                        first_not_empty((not_empty[0], not_empty[1] + 1),
+                                        cells, 'row')[1]
                         CR_d['General_information']['Impact_DSA'] = cell_of_DSA
                 continue
 
@@ -902,7 +935,6 @@ def main_func(table_name):
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
 
-                # --- ПОДДЕРЖКА КОЛОНКИ "CODE" В БЛОКЕ СОГЛАСОВАНИЯ ---
                 elif section in ['Approval', 'Confirmation']:
                     code_keys = list(
                         filter(lambda x: re_var(['posit'],
@@ -910,7 +942,26 @@ def main_func(table_name):
                             ['code'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
-                # -----------------------------------------------------
+
+                # Собираем инициатора ДАЖЕ ЕСЛИ поле Code(Должность) пустует
+                if section in ['Approval', 'Confirmation']:
+                    for column_number in _temp_dict:
+                        if re_var(['init'], _temp_dict[column_number]):
+                            insert_value = cells.get((row, column_number))
+                            if insert_value:
+                                val = str(insert_value)
+                                pos_val = cells.get(
+                                    (row, code_keys[0])) if code_keys else ""
+                                if pos_val and str(pos_val).strip():
+                                    val = f"{pos_val} - {val}"
+                                if not CR_d['General_information'][
+                                    'Initiator']:
+                                    CR_d['General_information'][
+                                        'Initiator'] = val
+                                elif val not in CR_d['General_information'][
+                                    'Initiator']:
+                                    CR_d['General_information'][
+                                        'Initiator'] += f"\n{val}"
 
                 if not code:
                     continue
@@ -972,7 +1023,6 @@ def main_func(table_name):
                         if re_var(['description'], _temp_dict[column_number]):
                             CR_d['SSC'][code]['Description'] = insert_value
 
-                    # --- ПЕРЕХВАТ "CR INITIATOR" И ИМЕН СОГЛАСУЮЩИХ В БЛОКЕ СОГЛАСОВАНИЯ ---
                     elif section == 'Confirmation':
                         if re_var(['posit'], _temp_dict[column_number]):
                             position = insert_value
@@ -990,19 +1040,6 @@ def main_func(table_name):
                                 CR_d['Confirmation'][code][name][
                                     'Position'] = locals().get('position')
                                 CR_d['Confirmation'][code][name]['Date'] = date
-                        elif re_var(['init'], _temp_dict[column_number]):
-                            if insert_value:
-                                val = str(insert_value)
-                                if code and str(code).strip():
-                                    val = f"{code} - {val}"  # Склеиваем Код (Должность) и Имя
-                                if not CR_d['General_information'][
-                                    'Initiator']:
-                                    CR_d['General_information'][
-                                        'Initiator'] = val
-                                elif val not in CR_d['General_information'][
-                                    'Initiator']:
-                                    CR_d['General_information'][
-                                        'Initiator'] += f"\n{val}"
 
                     elif section == 'Approval':
                         if re_var(['person'],
@@ -1012,20 +1049,6 @@ def main_func(table_name):
                             CR_d['Approval'][code]['person'] = insert_value
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['date'] = insert_value
-                        elif re_var(['init'], _temp_dict[column_number]):
-                            if insert_value:
-                                val = str(insert_value)
-                                if code and str(code).strip():
-                                    val = f"{code} - {val}"  # Склеиваем Код (Должность) и Имя
-                                if not CR_d['General_information'][
-                                    'Initiator']:
-                                    CR_d['General_information'][
-                                        'Initiator'] = val
-                                elif val not in CR_d['General_information'][
-                                    'Initiator']:
-                                    CR_d['General_information'][
-                                        'Initiator'] += f"\n{val}"
-                    # ------------------------------------------------------------------------
 
             elif section in ['General', 'Nontech']:
                 _temp_dict2 = temp_dict_of_row(row, cells)
