@@ -446,8 +446,8 @@ def main_func(table_name):
                         re_var(['descr', 'sol'], first_text) or re_var(
                         ['descr', 'change'], first_text) or re_var(
                         ['módosítások', 'leírása'], first_text)):
-                    CR_d['General_information']['Descr_tech_sol'] = cells.get(
-                        (row + 1, first_col))
+                    CR_d['General_information']['Descr_tech_sol'] = \
+                    first_not_empty((row + 1, 1), cells, 'row')[1]
                     continue
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
@@ -829,18 +829,20 @@ def main_func(table_name):
                     section == 'Evaluation' and subsection != 'JD'):
                 if section == 'General' and first_text and re_var(
                         ['descrip', 'engin', 'change'], first_text):
-                    CR_d['General_information']['Descr_tech_sol'] = cells.get(
-                        (row + 1, first_col))
+                    CR_d['General_information']['Descr_tech_sol'] = \
+                    first_not_empty((row + 1, 1), cells, 'row')[1]
                     _descr_flag = 1
                 if section == 'Evaluation' and first_text and re_var(
                         ['comment', 'reason', 'reject'], first_text):
                     CR_d['General_information']['Evaluation'][
-                        'Reject_comment'] = cells.get((row + 1, first_col))
+                        'Reject_comment'] = \
+                    first_not_empty((row + 1, 1), cells, 'row')[1]
                     _descr_flag = 1
                 if section == 'Evaluation' and first_text and re_var(
                         ['comment', 'reason', 'refus'], first_text):
                     CR_d['General_information']['Evaluation'][
-                        'Refuse_comment'] = cells.get((row + 1, first_col))
+                        'Refuse_comment'] = \
+                    first_not_empty((row + 1, 1), cells, 'row')[1]
                     _descr_flag = 1
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
@@ -853,13 +855,13 @@ def main_func(table_name):
                     else:
                         if not any(map(lambda x: header_in_reg(
                                 _temp_dict2[list(_temp_dict2.keys())[-1]],
-                                x, dict_of_reg_value_local),
-                                       dict_of_reg_value_local.keys())):
+                                x, dict_of_reg_value_FCR),
+                                       dict_of_reg_value_FCR.keys())):
                             if not any(map(lambda x: header_in_reg(
                                     _temp_dict2[
                                         list(_temp_dict2.keys())[-2]], x,
-                                    dict_of_reg_value_local),
-                                           dict_of_reg_value_local.keys())):
+                                    dict_of_reg_value_FCR),
+                                           dict_of_reg_value_FCR.keys())):
                                 _temp_dict2.pop(
                                     list(_temp_dict2.keys())[-1])
 
@@ -869,8 +871,8 @@ def main_func(table_name):
                 for item in list(sorted(_temp_dict2.keys())):
                     if any(map(
                             lambda x: header_in_reg(_temp_dict2[item], x,
-                                                    dict_of_reg_value_local),
-                            dict_of_reg_value_local.keys())):
+                                                    dict_of_reg_value_FCR),
+                            dict_of_reg_value_FCR.keys())):
                         if flag == True:
                             _temp_temp_dict[key + 0.1] = None
                         _temp_temp_dict[item] = _temp_dict2[item]
@@ -1184,11 +1186,33 @@ def main_func(table_name):
                             CR_d['Approval'][code]['date'] = insert_value
 
             elif section in ['General', 'Nontech']:
+                if section == 'General' and first_text and (
+                        re_var(['descr', 'sol'], first_text) or re_var(
+                        ['descr', 'change'], first_text) or re_var(
+                        ['módosítások', 'leírása'], first_text)):
+                    CR_d['General_information']['Descr_tech_sol'] = \
+                    first_not_empty((row + 1, 1), cells, 'row')[1]
+                    continue
+
                 _temp_dict2 = temp_dict_of_row(row, cells)
                 if not _temp_dict2:
                     continue
 
                 vals = list(_temp_dict2.values())
+
+                # --- ПЕРЕХВАТ ДЛЯ SSC (Строка 11: Number of building / Name of structure) ---
+                if section == 'General':
+                    for i, v in enumerate(vals):
+                        v_str = str(v).lower()
+                        if (
+                                'number of building' in v_str or 'építmény száma' in v_str or
+                                'name of structure' in v_str or 'építmény megnevezése' in v_str):
+                            if i + 1 < len(vals) and vals[i + 1]:
+                                bld_val = str(vals[i + 1]).strip()
+                                if bld_val and bld_val not in CR_d['SSC']:
+                                    CR_d['SSC'][bld_val] = {}
+                # ------------------------------------------------------------------------------
+
                 if len(vals) >= 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
                                                                vals[
@@ -1202,37 +1226,17 @@ def main_func(table_name):
                     if len(_temp_dict2.keys()) == 1:
                         _temp_dict2[list(_temp_dict2.keys())[0] + 0.1] = None
                     else:
-                        if not any(map(lambda x: header_in_reg(
-                                _temp_dict2[list(_temp_dict2.keys())[-1]],
-                                x, dict_of_reg_value_local),
-                                       dict_of_reg_value_local.keys())):
-                            if not any(map(lambda x: header_in_reg(
-                                    _temp_dict2[list(_temp_dict2.keys())[-2]],
-                                    x,
-                                    dict_of_reg_value_local),
-                                           dict_of_reg_value_local.keys())):
-                                _temp_dict2.pop(list(_temp_dict2.keys())[-1])
-
-                _temp_temp_dict = {}
-                flag = False
-                key = 0
-                for item in list(sorted(_temp_dict2.keys())):
-                    if any(map(
-                            lambda x: header_in_reg(_temp_dict2[item], x,
-                                                    dict_of_reg_value_local),
-                            dict_of_reg_value_local.keys())):
-                        if flag == True:
-                            _temp_temp_dict[key + 0.1] = None
-                        _temp_temp_dict[item] = _temp_dict2[item]
-                        flag = True
-                        key = item
-                    else:
-                        if flag == True:
-                            _temp_temp_dict[item] = _temp_dict2[item]
-                            flag = False
-                if flag == True:
-                    _temp_temp_dict[key + 0.1] = None
-                _temp_dict2 = _temp_temp_dict
+                        flag = False
+                        key = 0
+                        for item in list(sorted(_temp_dict2.keys())):
+                            for position in dict_of_reg_value_CR.keys():
+                                if header_in_reg(_temp_dict2[item], position,
+                                                 dict_of_reg_value_CR) and flag == False:
+                                    flag = True
+                                    key = item
+                                elif header_in_reg(_temp_dict2[item], position,
+                                                   dict_of_reg_value_CR) and flag == True:
+                                    _temp_dict2[key + 0.1] = None
 
                 if len(_temp_dict2) % 2 != 0 and _temp_dict2:
                     _temp_dict2[max(_temp_dict2.keys()) + 0.1] = None
