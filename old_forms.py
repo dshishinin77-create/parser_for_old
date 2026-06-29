@@ -149,7 +149,9 @@ dict_of_reg_value_CRD = {
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
     'Reason_code': [['(reason.*code|okának.*kód)'], []],
-    'CR_reason': [['(reason|okának|other|egyéb)'], ['code', 'kód']],
+    'CR_reason': [
+        ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
+        ['code']],
     'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
@@ -167,7 +169,9 @@ dict_of_reg_value_CR = {
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
     'Reason_code': [['(reason.*code|okának.*kód)'], []],
-    'CR_reason': [['(reason|okának|other|egyéb)'], ['code', 'kód']],
+    'CR_reason': [
+        ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
+        ['code']],
     'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
@@ -219,7 +223,8 @@ def main_func(table_name):
                                     'Constr_facility': None,
                                     'Reason_code': None,
                                     'Change_type': None}, 'Confirmation': {},
-            'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {}}
+            'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {},
+            'List of documents proposed change': {}}
         section = 'General'
         prev_section = 'General'
         _temp_dict = {}
@@ -245,6 +250,11 @@ def main_func(table_name):
                 header_text = first_text
                 if re_var(['supporting', 'descr'], header_text):
                     section = 'Sup_doc'
+                elif re_var(['list', 'document', 'proposed'],
+                            header_text) or re_var(
+                        ['módosítását', 'javasolják'], header_text) or re_var(
+                        ['dokumentumok', 'listája'], header_text):
+                    section = 'Proposed_docs'
                 elif re_var(['impact', 'init', 'TDD'], header_text):
                     section = 'TDD'
                 elif re_var(['impact', 'TDD'], header_text):
@@ -315,7 +325,7 @@ def main_func(table_name):
                                                first_text): continue
 
             if section in ['TDD', 'Other_TDD', 'SSC', 'Confirmation',
-                           'Approval']:
+                           'Approval', 'Proposed_docs']:
                 if section == 'Approval' and first_text and (
                         re_var(['close'], first_text) or re_var(
                         ['end', 'form'], first_text)):
@@ -332,9 +342,11 @@ def main_func(table_name):
                 if not _temp_dict: continue
 
                 code = None
-                if section in ['TDD', 'Other_TDD', 'SSC']:
+                if section in ['TDD', 'Other_TDD', 'SSC', 'Proposed_docs']:
                     code_keys = list(
-                        filter(lambda x: re_var(['code'], _temp_dict[x]),
+                        filter(lambda x: re_var(['code'],
+                                                _temp_dict[x]) or re_var(
+                            ['kód'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
                 elif section == 'Confirmation':
@@ -361,13 +373,46 @@ def main_func(table_name):
                 elif section == 'Approval':
                     if code not in CR_d['Approval'].keys():
                         CR_d['Approval'][code] = {}
+                elif section == 'Proposed_docs':
+                    if code not in CR_d[
+                        'List of documents proposed change'].keys():
+                        CR_d['List of documents proposed change'][code] = {}
                 else:
                     if code not in CR_d['TDD'].keys():
                         CR_d['TDD'][code] = {}
 
                 for column_number in _temp_dict:
                     insert_value = cells.get((row, column_number))
-                    if section in ['TDD', 'Other_TDD'] and insert_value:
+
+                    if section == 'Proposed_docs' and insert_value:
+                        if re_var(['revision'],
+                                  _temp_dict[column_number]) or re_var(
+                                ['revízió'],
+                                _temp_dict[column_number]) or re_var(['rev'],
+                                                                     _temp_dict[
+                                                                         column_number]):
+                            if '_' in str(insert_value):
+                                CR_d['List of documents proposed change'][
+                                    code]['Revision'] = \
+                                str(insert_value).split('_')[0]
+                                CR_d['List of documents proposed change'][
+                                    code]['Version'] = \
+                                str(insert_value).split('_')[1]
+                            else:
+                                CR_d['List of documents proposed change'][
+                                    code]['Revision'] = insert_value
+                                CR_d['List of documents proposed change'][
+                                    code]['Version'] = 0
+                        elif re_var(['name'],
+                                    _temp_dict[column_number]) or re_var(
+                                ['megnevezés'],
+                                _temp_dict[column_number]) or re_var(['cím'],
+                                                                     _temp_dict[
+                                                                         column_number]):
+                            CR_d['List of documents proposed change'][code][
+                                'Name'] = insert_value
+
+                    elif section in ['TDD', 'Other_TDD'] and insert_value:
                         if re_var(['organ'], _temp_dict[column_number]):
                             CR_d['TDD'][code][
                                 'Organization'] = insert_value
@@ -464,7 +509,7 @@ def main_func(table_name):
                                 if bld_val and bld_val not in CR_d['SSC']:
                                     CR_d['SSC'][bld_val] = {}
 
-                if len(vals) == 3 and (
+                if len(vals) >= 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
                                                                vals[
                                                                    0]) or re_var(
@@ -473,7 +518,6 @@ def main_func(table_name):
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
 
-                # --- НОВЫЙ БЛОК СОСТАВЛЕНИЯ ПАР (ЗАГОЛОВОК - ЗНАЧЕНИЕ) ---
                 sorted_keys = sorted(_temp_dict2.keys())
                 paired_dict = {}
 
@@ -514,7 +558,6 @@ def main_func(table_name):
                             CR_d['General_information'][position] = value
                             dict_of_reg_value_local.pop(position)
                             break
-                # ---------------------------------------------------------
 
                 if section == 'Sup_doc' and first_text:
                     curr_cell, CR_d['Supp_descr_docs'][
@@ -687,7 +730,9 @@ def main_func(table_name):
                 code = None
                 if section in ['TDD', 'SSC']:
                     code_keys = list(
-                        filter(lambda x: re_var(['code'], _temp_dict[x]),
+                        filter(lambda x: re_var(['code'],
+                                                _temp_dict[x]) or re_var(
+                            ['kód'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
                 elif section == 'Approval':
@@ -871,7 +916,6 @@ def main_func(table_name):
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
 
-                # --- НОВЫЙ БЛОК СОСТАВЛЕНИЯ ПАР ---
                 sorted_keys = sorted(_temp_dict2.keys())
                 paired_dict = {}
 
@@ -916,7 +960,6 @@ def main_func(table_name):
                                 CR_d['General_information'][position] = value
                             dict_of_reg_value_local.pop(position)
                             break
-                # ----------------------------------
 
                 if section == 'Sup_doc' or (
                         section == 'Evaluation' and subsection == 'JD'):
@@ -963,7 +1006,8 @@ def main_func(table_name):
                                     'CR_reason': None, 'Descr_tech_sol': None,
                                     'Document_type': None,
                                     'Change_type': None}, 'Confirmation': {},
-            'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {}}
+            'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {},
+            'List of documents proposed change': {}}
         section = 'General'
         prev_section = 'General'
         _temp_dict = {}
@@ -990,6 +1034,11 @@ def main_func(table_name):
                 if re_var(['init', 'item'], header_text) or re_var(
                         ['scope', 'change'], header_text):
                     section = 'TDD'
+                elif re_var(['list', 'document', 'proposed'],
+                            header_text) or re_var(
+                        ['módosítását', 'javasolják'], header_text) or re_var(
+                        ['dokumentumok', 'listája'], header_text):
+                    section = 'Proposed_docs'
                 elif re_var(['conf', 'item'], header_text):
                     section = 'Configur'
                 elif re_var(['affect', 'syst'], header_text) or re_var(
@@ -1051,7 +1100,7 @@ def main_func(table_name):
                     continue
 
             if section in ['TDD', 'Configur', 'SSC', 'Confirmation',
-                           'Approval']:
+                           'Approval', 'Proposed_docs']:
                 if section == 'Approval' and first_text and (
                         re_var(['close'], first_text) or re_var(
                         ['end', 'form'], first_text)):
@@ -1076,9 +1125,11 @@ def main_func(table_name):
                 if not _temp_dict: continue
 
                 code = None
-                if section in ['TDD', 'Configur', 'SSC']:
+                if section in ['TDD', 'Configur', 'SSC', 'Proposed_docs']:
                     code_keys = list(
-                        filter(lambda x: re_var(['code'], _temp_dict[x]),
+                        filter(lambda x: re_var(['code'],
+                                                _temp_dict[x]) or re_var(
+                            ['kód'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
 
@@ -1122,13 +1173,46 @@ def main_func(table_name):
                         CR_d['Approval'][code] = {}
                 elif section == 'Configur':
                     CR_d['Configur'][code] = {}
+                elif section == 'Proposed_docs':
+                    if code not in list(
+                            CR_d['List of documents proposed change'].keys()):
+                        CR_d['List of documents proposed change'][code] = {}
                 else:
                     if code not in list(CR_d['TDD'].keys()):
                         CR_d['TDD'][code] = {}
 
                 for column_number in _temp_dict:
                     insert_value = cells.get((row, column_number))
-                    if section in ['TDD', 'Configur'] and insert_value:
+
+                    if section == 'Proposed_docs' and insert_value:
+                        if re_var(['revision'],
+                                  _temp_dict[column_number]) or re_var(
+                                ['revízió'],
+                                _temp_dict[column_number]) or re_var(['rev'],
+                                                                     _temp_dict[
+                                                                         column_number]):
+                            if '_' in str(insert_value):
+                                CR_d['List of documents proposed change'][
+                                    code]['Revision'] = \
+                                str(insert_value).split('_')[0]
+                                CR_d['List of documents proposed change'][
+                                    code]['Version'] = \
+                                str(insert_value).split('_')[1]
+                            else:
+                                CR_d['List of documents proposed change'][
+                                    code]['Revision'] = insert_value
+                                CR_d['List of documents proposed change'][
+                                    code]['Version'] = 0
+                        elif re_var(['name'],
+                                    _temp_dict[column_number]) or re_var(
+                                ['megnevezés'],
+                                _temp_dict[column_number]) or re_var(['cím'],
+                                                                     _temp_dict[
+                                                                         column_number]):
+                            CR_d['List of documents proposed change'][code][
+                                'Name'] = insert_value
+
+                    elif section in ['TDD', 'Configur'] and insert_value:
                         if re_var(['revision'], _temp_dict[column_number]):
                             if '_' in str(insert_value):
                                 CR_d[section][code]['Revision'] = \
@@ -1230,7 +1314,6 @@ def main_func(table_name):
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
 
-                # --- НОВЫЙ БЛОК СОСТАВЛЕНИЯ ПАР ---
                 sorted_keys = sorted(_temp_dict2.keys())
                 paired_dict = {}
 
@@ -1271,7 +1354,6 @@ def main_func(table_name):
                             CR_d['General_information'][position] = value
                             dict_of_reg_value_local.pop(position)
                             break
-                # ----------------------------------
 
     print(f'>>> Файл {short_table_name} успешно разобран. Формируется JSON...')
     return CR_d
