@@ -96,25 +96,27 @@ def smart_join(massive):
 
 
 dict_of_reg_value_FCR = {
-    'CR_number': [['change', 'request'], ['init']],
+    'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'Reg_date': ['registr', 'dat'],
     'CR_coordinator': ['coord'],
     'CR_number_int': ['init', 'intern'],
-    'Organization': [['organ'], ['init', 'intern']],
+    'Organization': [['init', 'organ'], ['intern']],
     'Initiator': [['init'], ['posit', 'organ', 'intern']],
     'Initiator_pos': ['init', 'posit'],
     'Document_type': ['document', 'type'],
     'Change_type': ['change', 'type'],
     'Activity_type': ['activit', 'type'],
-    'Constr_facility': ['constr', 'facil'],
+    'Constr_facility': [
+        ['(object.*construct|construct.*object|építkezés|constr.*facil)'], []],
     'Ini_Method_CR': ['init', 'method', 'cr'],
     'Method_CR': [['method', 'cr'], ['init', 'justif']],
     'Ini_Method_justif': ['init', 'method', 'justif'],
     'Method_justif': [['method', 'justif'], ['init', 'cr']],
     'Change_equipment': ['change', 'equip'],
-    'Reason_code': ['reason', 'code'],
-    'CR_reason': [['reason'], ['code']],
-    'Descr_tech_sol': ['descr', 'sol'],
+    'Reason_code': [['(reason.*code|okának.*kód)'], []],
+    'CR_reason': [['(reason|okának|other|egyéb)'], ['code', 'kód']],
+    'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'],
+                       []],
     'Final_status': ['final', 'stat'],
     'Material_eq': ['equiv', 'repl'],
     'REPLACE?': ['replac'],
@@ -146,8 +148,8 @@ dict_of_reg_value_CRD = {
     'Comment_nont': ['comment', 'non'],
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
-    'Reason_code': [['(reason|okának)'], ['other', 'egyéb']],
-    'CR_reason': [['(other|egyéb)'], []],
+    'Reason_code': [['(reason.*code|okának.*kód)'], []],
+    'CR_reason': [['(reason|okának|other|egyéb)'], ['code', 'kód']],
     'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
@@ -164,8 +166,8 @@ dict_of_reg_value_CR = {
     'Comment_nont': ['comment', 'non'],
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
-    'Reason_code': [['(reason|okának)'], ['other', 'egyéb']],
-    'CR_reason': [['(other|egyéb)'], []],
+    'Reason_code': [['(reason.*code|okának.*kód)'], []],
+    'CR_reason': [['(reason|okának|other|egyéb)'], ['code', 'kód']],
     'Descr_tech_sol': [['(descr.*sol|descr.*change|módosítások.*leírása)'], []]
 }
 
@@ -452,7 +454,6 @@ def main_func(table_name):
 
                 vals = list(_temp_dict2.values())
 
-                # Исключили "Name of structure", оставили только "Number of building"
                 if section == 'General':
                     for i, v in enumerate(vals):
                         v_str = str(v).lower()
@@ -463,7 +464,7 @@ def main_func(table_name):
                                 if bld_val and bld_val not in CR_d['SSC']:
                                     CR_d['SSC'][bld_val] = {}
 
-                if len(vals) >= 3 and (
+                if len(vals) == 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
                                                                vals[
                                                                    0]) or re_var(
@@ -472,57 +473,49 @@ def main_func(table_name):
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
 
-                if len(_temp_dict2.keys()) % 2 != 0:
-                    if len(_temp_dict2.keys()) == 1:
-                        _temp_dict2[list(_temp_dict2.keys())[0] + 0.1] = None
+                # --- НОВЫЙ БЛОК СОСТАВЛЕНИЯ ПАР (ЗАГОЛОВОК - ЗНАЧЕНИЕ) ---
+                sorted_keys = sorted(_temp_dict2.keys())
+                paired_dict = {}
+
+                idx = 0
+                while idx < len(sorted_keys):
+                    k1 = sorted_keys[idx]
+                    v1 = _temp_dict2[k1]
+
+                    is_h1 = any(
+                        header_in_reg(v1, pos, dict_of_reg_value_local) for pos
+                        in dict_of_reg_value_local)
+
+                    if not is_h1:
+                        idx += 1
+                        continue
+
+                    if idx + 1 < len(sorted_keys):
+                        k2 = sorted_keys[idx + 1]
+                        v2 = _temp_dict2[k2]
+                        is_h2 = any(
+                            header_in_reg(v2, pos, dict_of_reg_value_local) for
+                            pos in dict_of_reg_value_local)
+
+                        if is_h2:
+                            paired_dict[v1] = None
+                            idx += 1
+                        else:
+                            paired_dict[v1] = v2
+                            idx += 2
                     else:
-                        if not any(map(lambda x: header_in_reg(
-                                _temp_dict2[list(_temp_dict2.keys())[-1]],
-                                x, dict_of_reg_value_local),
-                                       dict_of_reg_value_local.keys())):
-                            if not any(map(lambda x: header_in_reg(
-                                    _temp_dict2[list(_temp_dict2.keys())[-2]],
-                                    x,
-                                    dict_of_reg_value_local),
-                                           dict_of_reg_value_local.keys())):
-                                _temp_dict2.pop(list(_temp_dict2.keys())[-1])
+                        paired_dict[v1] = None
+                        idx += 1
 
-                _temp_temp_dict = {}
-                flag = False
-                key = 0
-                for item in list(sorted(_temp_dict2.keys())):
-                    if any(map(
-                            lambda x: header_in_reg(_temp_dict2[item], x,
-                                                    dict_of_reg_value_local),
-                            dict_of_reg_value_local.keys())):
-                        if flag == True:
-                            _temp_temp_dict[key + 0.1] = None
-                        _temp_temp_dict[item] = _temp_dict2[item]
-                        flag = True
-                        key = item
-                    else:
-                        if flag == True:
-                            _temp_temp_dict[item] = _temp_dict2[item]
-                            flag = False
-                if flag == True:
-                    _temp_temp_dict[key + 0.1] = None
-                _temp_dict2 = _temp_temp_dict
-
-                if len(_temp_dict2) % 2 != 0 and _temp_dict2:
-                    _temp_dict2[max(_temp_dict2.keys()) + 0.1] = None
-
-                sorted_dict_keys = sorted(_temp_dict2.keys())
-                _temp_dict2 = {
-                    _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
-                    for i, k in enumerate(sorted_dict_keys) if i % 2 == 0}
-                for header in _temp_dict2.keys():
+                for header, value in paired_dict.items():
                     for position in list(dict_of_reg_value_local.keys()):
                         if header_in_reg(header, position,
-                                         dict_of_reg_value_CRD):
-                            CR_d['General_information'][position] = \
-                                _temp_dict2[header]
+                                         dict_of_reg_value_local):
+                            CR_d['General_information'][position] = value
                             dict_of_reg_value_local.pop(position)
                             break
+                # ---------------------------------------------------------
+
                 if section == 'Sup_doc' and first_text:
                     curr_cell, CR_d['Supp_descr_docs'][
                         first_text] = first_not_empty((row, first_col + 1),
@@ -857,63 +850,73 @@ def main_func(table_name):
                 if not _temp_dict2:
                     continue
 
-                if len(_temp_dict2.keys()) % 2 != 0:
-                    if len(_temp_dict2.keys()) == 1:
-                        _temp_dict2[list(_temp_dict2.keys())[0] + 0.1] = None
+                vals = list(_temp_dict2.values())
+
+                if section == 'General':
+                    for i, v in enumerate(vals):
+                        v_str = str(v).lower()
+                        if (
+                                'number of building' in v_str or 'építmény száma' in v_str):
+                            if i + 1 < len(vals) and vals[i + 1]:
+                                bld_val = str(vals[i + 1]).strip()
+                                if bld_val and bld_val not in CR_d['SSC']:
+                                    CR_d['SSC'][bld_val] = {}
+
+                if len(vals) == 3 and (
+                        re_var(['registr'], vals[0]) or re_var(['bejegyz'],
+                                                               vals[
+                                                                   0]) or re_var(
+                        ['change', 'request'], vals[0])):
+                    CR_d['General_information']['CR_number'] = vals[1]
+                    CR_d['General_information']['Reg_date'] = vals[2]
+                    continue
+
+                # --- НОВЫЙ БЛОК СОСТАВЛЕНИЯ ПАР ---
+                sorted_keys = sorted(_temp_dict2.keys())
+                paired_dict = {}
+
+                idx = 0
+                while idx < len(sorted_keys):
+                    k1 = sorted_keys[idx]
+                    v1 = _temp_dict2[k1]
+
+                    is_h1 = any(
+                        header_in_reg(v1, pos, dict_of_reg_value_local) for pos
+                        in dict_of_reg_value_local)
+
+                    if not is_h1:
+                        idx += 1
+                        continue
+
+                    if idx + 1 < len(sorted_keys):
+                        k2 = sorted_keys[idx + 1]
+                        v2 = _temp_dict2[k2]
+                        is_h2 = any(
+                            header_in_reg(v2, pos, dict_of_reg_value_local) for
+                            pos in dict_of_reg_value_local)
+
+                        if is_h2:
+                            paired_dict[v1] = None
+                            idx += 1
+                        else:
+                            paired_dict[v1] = v2
+                            idx += 2
                     else:
-                        if not any(map(lambda x: header_in_reg(
-                                _temp_dict2[list(_temp_dict2.keys())[-1]],
-                                x, dict_of_reg_value_FCR),
-                                       dict_of_reg_value_FCR.keys())):
-                            if not any(map(lambda x: header_in_reg(
-                                    _temp_dict2[
-                                        list(_temp_dict2.keys())[-2]], x,
-                                    dict_of_reg_value_FCR),
-                                           dict_of_reg_value_FCR.keys())):
-                                _temp_dict2.pop(
-                                    list(_temp_dict2.keys())[-1])
+                        paired_dict[v1] = None
+                        idx += 1
 
-                _temp_temp_dict = {}
-                flag = False
-                key = 0
-                for item in list(sorted(_temp_dict2.keys())):
-                    if any(map(
-                            lambda x: header_in_reg(_temp_dict2[item], x,
-                                                    dict_of_reg_value_FCR),
-                            dict_of_reg_value_FCR.keys())):
-                        if flag == True:
-                            _temp_temp_dict[key + 0.1] = None
-                        _temp_temp_dict[item] = _temp_dict2[item]
-                        flag = True
-                        key = item
-                    else:
-                        if flag == True:
-                            _temp_temp_dict[item] = _temp_dict2[item]
-                            flag = False
-                if flag == True:
-                    _temp_temp_dict[key + 0.1] = None
-                _temp_dict2 = _temp_temp_dict
-
-                if len(_temp_dict2) % 2 != 0 and _temp_dict2:
-                    _temp_dict2[max(_temp_dict2.keys()) + 0.1] = None
-
-                sorted_dict_keys = sorted(_temp_dict2.keys())
-                _temp_dict2 = {
-                    _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]]
-                    for i, k in enumerate(sorted_dict_keys) if i % 2 == 0}
-
-                for header in _temp_dict2.keys():
+                for header, value in paired_dict.items():
                     for position in list(dict_of_reg_value_local.keys()):
                         if header_in_reg(header, position,
                                          dict_of_reg_value_local):
                             if doc_mode == 'FCR' and section == 'Evaluation':
                                 CR_d['General_information']['Evaluation'][
-                                    position] = _temp_dict2[header]
+                                    position] = value
                             else:
-                                CR_d['General_information'][position] = \
-                                _temp_dict2[header]
+                                CR_d['General_information'][position] = value
                             dict_of_reg_value_local.pop(position)
                             break
+                # ----------------------------------
 
                 if section == 'Sup_doc' or (
                         section == 'Evaluation' and subsection == 'JD'):
@@ -1208,7 +1211,6 @@ def main_func(table_name):
 
                 vals = list(_temp_dict2.values())
 
-                # --- ИСКЛЮЧИЛИ "NAME OF STRUCTURE", ОСТАВИЛИ ТОЛЬКО "NUMBER OF BUILDING" ---
                 if section == 'General':
                     for i, v in enumerate(vals):
                         v_str = str(v).lower()
@@ -1218,9 +1220,8 @@ def main_func(table_name):
                                 bld_val = str(vals[i + 1]).strip()
                                 if bld_val and bld_val not in CR_d['SSC']:
                                     CR_d['SSC'][bld_val] = {}
-                # -------------------------------------------------------------------------
 
-                if len(vals) >= 3 and (
+                if len(vals) == 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
                                                                vals[
                                                                    0]) or re_var(
@@ -1229,37 +1230,48 @@ def main_func(table_name):
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
 
-                if len(_temp_dict2.keys()) % 2 != 0:
-                    if len(_temp_dict2.keys()) == 1:
-                        _temp_dict2[list(_temp_dict2.keys())[0] + 0.1] = None
+                # --- НОВЫЙ БЛОК СОСТАВЛЕНИЯ ПАР ---
+                sorted_keys = sorted(_temp_dict2.keys())
+                paired_dict = {}
+
+                idx = 0
+                while idx < len(sorted_keys):
+                    k1 = sorted_keys[idx]
+                    v1 = _temp_dict2[k1]
+
+                    is_h1 = any(
+                        header_in_reg(v1, pos, dict_of_reg_value_local) for pos
+                        in dict_of_reg_value_local)
+
+                    if not is_h1:
+                        idx += 1
+                        continue
+
+                    if idx + 1 < len(sorted_keys):
+                        k2 = sorted_keys[idx + 1]
+                        v2 = _temp_dict2[k2]
+                        is_h2 = any(
+                            header_in_reg(v2, pos, dict_of_reg_value_local) for
+                            pos in dict_of_reg_value_local)
+
+                        if is_h2:
+                            paired_dict[v1] = None
+                            idx += 1
+                        else:
+                            paired_dict[v1] = v2
+                            idx += 2
                     else:
-                        flag = False
-                        key = 0
-                        for item in list(sorted(_temp_dict2.keys())):
-                            for position in dict_of_reg_value_CR.keys():
-                                if header_in_reg(_temp_dict2[item], position,
-                                                 dict_of_reg_value_CR) and flag == False:
-                                    flag = True
-                                    key = item
-                                elif header_in_reg(_temp_dict2[item], position,
-                                                   dict_of_reg_value_CR) and flag == True:
-                                    _temp_dict2[key + 0.1] = None
+                        paired_dict[v1] = None
+                        idx += 1
 
-                if len(_temp_dict2) % 2 != 0 and _temp_dict2:
-                    _temp_dict2[max(_temp_dict2.keys()) + 0.1] = None
-
-                sorted_dict_keys = sorted(_temp_dict2.keys())
-                _temp_dict2 = {
-                    _temp_dict2[k]: _temp_dict2[sorted_dict_keys[i + 1]] for
-                    i, k in enumerate(sorted_dict_keys) if i % 2 == 0}
-                for header in _temp_dict2.keys():
+                for header, value in paired_dict.items():
                     for position in list(dict_of_reg_value_local.keys()):
                         if header_in_reg(header, position,
-                                         dict_of_reg_value_CR):
-                            CR_d['General_information'][position] = \
-                                _temp_dict2[header]
+                                         dict_of_reg_value_local):
+                            CR_d['General_information'][position] = value
                             dict_of_reg_value_local.pop(position)
                             break
+                # ----------------------------------
 
     print(f'>>> Файл {short_table_name} успешно разобран. Формируется JSON...')
     return CR_d
