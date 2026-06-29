@@ -126,7 +126,6 @@ dict_of_reg_value_CRD = {
     'CR_coordinator': ['contr', 'coord'],
     'CR_number_int': ['init', 'intern'],
     'Organization': [['init', 'organ'], ['intern']],
-    # Исправлена блокирующая ошибка (убрано 'organ' из стоп-слов)
     'Initiator': ['init'],
     'Document_type': ['document', 'type'],
     'Method_CR': ['method'],
@@ -145,7 +144,6 @@ dict_of_reg_value_CRD = {
 dict_of_reg_value_CR = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'Organization': [['init', 'organ'], ['intern']],
-    # Исправлена блокирующая ошибка
     'Responsible': ['responsible', 'eval'],
     'Initiator': [['init'], ['organ', 'intern']],
     'CR_coordinator': ['contr', 'coord'],
@@ -281,7 +279,9 @@ def main_func(table_name):
                         if code_keys: code = cells.get((row, code_keys[0]))
                     elif section == 'Approval':
                         code_keys = list(
-                            filter(lambda x: re_var(['posit'], _temp_dict[x]),
+                            filter(lambda x: re_var(['posit'],
+                                                    _temp_dict[x]) or re_var(
+                                ['code'], _temp_dict[x]),
                                    _temp_dict))
                         if code_keys: code = cells.get((row, code_keys[0]))
 
@@ -354,29 +354,62 @@ def main_func(table_name):
                                 position = insert_value
                             elif re_var(['resp', 'pers'],
                                         _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]):
+                                ['name'], _temp_dict[column_number]) or re_var(
+                                ['approv'], _temp_dict[column_number]):
                                 name = insert_value
                                 CR_d['Confirmation'][code][name] = {
                                     'Position': None, 'Date': None}
                             elif re_var(['date'], _temp_dict[column_number]):
                                 date = insert_value
-                                CR_d['Confirmation'][code][name][
-                                    'Position'] = position
-                                CR_d['Confirmation'][code][name]['Date'] = date
+                                if 'name' in locals() and name in \
+                                        CR_d['Confirmation'][code]:
+                                    CR_d['Confirmation'][code][name][
+                                        'Position'] = locals().get('position')
+                                    CR_d['Confirmation'][code][name][
+                                        'Date'] = date
+                            elif re_var(['init'], _temp_dict[column_number]):
+                                if insert_value:
+                                    val = str(insert_value)
+                                    if code and str(code).strip():
+                                        val = f"{code} - {val}"
+                                    if not CR_d['General_information'][
+                                        'Initiator']:
+                                        CR_d['General_information'][
+                                            'Initiator'] = val
+                                    elif val not in \
+                                            CR_d['General_information'][
+                                                'Initiator']:
+                                        CR_d['General_information'][
+                                            'Initiator'] += f"\n{val}"
                         elif section == 'Approval':
                             if re_var(['person'],
                                       _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]):
+                                    ['name'],
+                                    _temp_dict[column_number]) or re_var(
+                                    ['approv'], _temp_dict[column_number]):
                                 CR_d['Approval'][code]['person'] = insert_value
                             elif re_var(['date'], _temp_dict[column_number]):
                                 CR_d['Approval'][code]['date'] = insert_value
+                            elif re_var(['init'], _temp_dict[column_number]):
+                                if insert_value:
+                                    val = str(insert_value)
+                                    if code and str(code).strip():
+                                        val = f"{code} - {val}"
+                                    if not CR_d['General_information'][
+                                        'Initiator']:
+                                        CR_d['General_information'][
+                                            'Initiator'] = val
+                                    elif val not in \
+                                            CR_d['General_information'][
+                                                'Initiator']:
+                                        CR_d['General_information'][
+                                            'Initiator'] += f"\n{val}"
 
                 if section in ['General', 'Final', 'Nontech']:
                     _temp_dict2 = temp_dict_of_row(row, cells)
                     if not _temp_dict2:
                         continue
 
-                    # --- ПЕРЕХВАТЧИК ДЛЯ ДАТЫ (Без заголовка) ---
                     vals = list(_temp_dict2.values())
                     if len(vals) >= 3 and (
                             re_var(['registr'], vals[0]) or re_var(['bejegyz'],
@@ -386,7 +419,6 @@ def main_func(table_name):
                         CR_d['General_information']['CR_number'] = vals[1]
                         CR_d['General_information']['Reg_date'] = vals[2]
                         continue
-                    # --------------------------------------------------------------------
 
                     if len(_temp_dict2.keys()) % 2 != 0:
                         if len(_temp_dict2.keys()) == 1:
@@ -794,13 +826,16 @@ def main_func(table_name):
 
     elif doc_mode == 'CR':
         dict_of_reg_value_local = dict_of_reg_value_CR.copy()
+
+        # --- СТРОГО ТВОЙ ПОРЯДОК СЛОВАРЯ ---
         CR_d = {
-            'General_information': {'CR_number': None, 'Organization': None,
-                                    'Initiator': None, 'Responsible': None,
+            'General_information': {'CR_number': None, 'Reg_date': None,
+                                    'Initiator': None,
+                                    'Organization': None, 'Responsible': None,
                                     'Impact_DSA': None, 'CR_coordinator': None,
                                     'CR_number_int': None, 'Contract': None,
                                     'Impact_cost': None, 'Schedule': None,
-                                    'Comment_nont': None, 'Reg_date': None,
+                                    'Comment_nont': None,
                                     'Constr_facility': None,
                                     'Reason_code': None,
                                     'CR_reason': None, 'Descr_tech_sol': None,
@@ -809,6 +844,8 @@ def main_func(table_name):
             'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {}}
         section = 'General'
         _temp_dict = {}
+        # ------------------------------------
+
         for row in range(first_cell[0], last_cell[0] + 1):
             if list(filter(
                     lambda x: x[0] == row and x[1] > last_cell[1] and cells[x],
@@ -864,11 +901,16 @@ def main_func(table_name):
                         filter(lambda x: re_var(['code'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
+
+                # --- ПОДДЕРЖКА КОЛОНКИ "CODE" В БЛОКЕ СОГЛАСОВАНИЯ ---
                 elif section in ['Approval', 'Confirmation']:
                     code_keys = list(
-                        filter(lambda x: re_var(['posit'], _temp_dict[x]),
+                        filter(lambda x: re_var(['posit'],
+                                                _temp_dict[x]) or re_var(
+                            ['code'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
+                # -----------------------------------------------------
 
                 if not code:
                     continue
@@ -879,7 +921,8 @@ def main_func(table_name):
                     if code not in CR_d['Confirmation'].keys():
                         CR_d['Confirmation'][code] = {}
                 elif section == 'Approval':
-                    CR_d['Approval'][code] = {}
+                    if code not in CR_d['Approval'].keys():
+                        CR_d['Approval'][code] = {}
                 elif section == 'Configur':
                     CR_d['Configur'][code] = {}
                 else:
@@ -928,34 +971,67 @@ def main_func(table_name):
                     elif section == 'SSC':
                         if re_var(['description'], _temp_dict[column_number]):
                             CR_d['SSC'][code]['Description'] = insert_value
+
+                    # --- ПЕРЕХВАТ "CR INITIATOR" И ИМЕН СОГЛАСУЮЩИХ В БЛОКЕ СОГЛАСОВАНИЯ ---
                     elif section == 'Confirmation':
                         if re_var(['posit'], _temp_dict[column_number]):
                             position = insert_value
                         elif re_var(['resp', 'pers'],
                                     _temp_dict[column_number]) or re_var(
-                            ['name'], _temp_dict[column_number]):
+                                ['name'], _temp_dict[column_number]) or re_var(
+                                ['approv'], _temp_dict[column_number]):
                             name = insert_value
                             CR_d['Confirmation'][code][name] = {
                                 'Position': None, 'Date': None}
                         elif re_var(['date'], _temp_dict[column_number]):
                             date = insert_value
-                            CR_d['Confirmation'][code][name][
-                                'Position'] = position
-                            CR_d['Confirmation'][code][name]['Date'] = date
+                            if 'name' in locals() and name in \
+                                    CR_d['Confirmation'][code]:
+                                CR_d['Confirmation'][code][name][
+                                    'Position'] = locals().get('position')
+                                CR_d['Confirmation'][code][name]['Date'] = date
+                        elif re_var(['init'], _temp_dict[column_number]):
+                            if insert_value:
+                                val = str(insert_value)
+                                if code and str(code).strip():
+                                    val = f"{code} - {val}"  # Склеиваем Код (Должность) и Имя
+                                if not CR_d['General_information'][
+                                    'Initiator']:
+                                    CR_d['General_information'][
+                                        'Initiator'] = val
+                                elif val not in CR_d['General_information'][
+                                    'Initiator']:
+                                    CR_d['General_information'][
+                                        'Initiator'] += f"\n{val}"
+
                     elif section == 'Approval':
                         if re_var(['person'],
                                   _temp_dict[column_number]) or re_var(
-                            ['name'], _temp_dict[column_number]):
+                                ['name'], _temp_dict[column_number]) or re_var(
+                                ['approv'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['person'] = insert_value
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['date'] = insert_value
+                        elif re_var(['init'], _temp_dict[column_number]):
+                            if insert_value:
+                                val = str(insert_value)
+                                if code and str(code).strip():
+                                    val = f"{code} - {val}"  # Склеиваем Код (Должность) и Имя
+                                if not CR_d['General_information'][
+                                    'Initiator']:
+                                    CR_d['General_information'][
+                                        'Initiator'] = val
+                                elif val not in CR_d['General_information'][
+                                    'Initiator']:
+                                    CR_d['General_information'][
+                                        'Initiator'] += f"\n{val}"
+                    # ------------------------------------------------------------------------
 
             elif section in ['General', 'Nontech']:
                 _temp_dict2 = temp_dict_of_row(row, cells)
                 if not _temp_dict2:
                     continue
 
-                # --- ПЕРЕХВАТЧИК ДЛЯ ДАТЫ (Без заголовка) ---
                 vals = list(_temp_dict2.values())
                 if len(vals) >= 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
@@ -965,7 +1041,6 @@ def main_func(table_name):
                     CR_d['General_information']['CR_number'] = vals[1]
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
-                # --------------------------------------------------------------------
 
                 if len(_temp_dict2.keys()) % 2 != 0:
                     if len(_temp_dict2.keys()) == 1:
