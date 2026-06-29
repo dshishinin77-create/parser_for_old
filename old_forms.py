@@ -121,12 +121,12 @@ dict_of_reg_value_FCR = {
     'SS': ['struct', 'geom']
 }
 
-# --- ОБНОВЛЕННЫЕ СЛОВАРИ ДЛЯ CRD И CR С ПОДДЕРЖКОЙ НОВЫХ ПОЛЕЙ И ВЕНГЕРСКОГО ЯЗЫКА ---
 dict_of_reg_value_CRD = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'CR_coordinator': ['contr', 'coord'],
     'CR_number_int': ['init', 'intern'],
-    'Organization': [['init', 'organ'], ['organ', 'intern']],
+    'Organization': [['init', 'organ'], ['intern']],
+    # Исправлена блокирующая ошибка (убрано 'organ' из стоп-слов)
     'Initiator': ['init'],
     'Document_type': ['document', 'type'],
     'Method_CR': ['method'],
@@ -134,14 +134,18 @@ dict_of_reg_value_CRD = {
     'Impact_cost': ['cost', 'impact'],
     'Schedule': ['schedul'],
     'Comment_nont': ['comment', 'non'],
-    'Constr_facility': [['(object.*construct|építkezés)'], []],
+    'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
+                        []],
     'Reason_code': [['(reason.*code|okának.*kódja)'], []],
-    'CR_reason': [['(other.*reason|egyéb.*okok)'], []]
+    'CR_reason': [
+        ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
+        ['code']]
 }
 
 dict_of_reg_value_CR = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
-    'Organization': [['init', 'organ'], ['organ', 'intern']],
+    'Organization': [['init', 'organ'], ['intern']],
+    # Исправлена блокирующая ошибка
     'Responsible': ['responsible', 'eval'],
     'Initiator': [['init'], ['organ', 'intern']],
     'CR_coordinator': ['contr', 'coord'],
@@ -150,14 +154,14 @@ dict_of_reg_value_CR = {
     'Impact_cost': ['cost', 'impact'],
     'Schedule': ['schedul'],
     'Comment_nont': ['comment', 'non'],
-    'Constr_facility': [['(object.*construct|építkezés)'], []],
+    'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
+                        []],
     'Reason_code': [['(reason.*code|okának.*kódja)'], []],
-    'CR_reason': [['(other.*reason|egyéb.*okok)'], []],
+    'CR_reason': [
+        ['(other.*reason|reason.*of.*change|reason.*change|egyéb.*okok)'],
+        ['code']],
     'Descr_tech_sol': ['descr', 'sol']
 }
-
-
-# -----------------------------------------------------------------------------------
 
 
 def main_func(table_name):
@@ -372,11 +376,13 @@ def main_func(table_name):
                     if not _temp_dict2:
                         continue
 
-                    # --- СПЕЦИАЛЬНЫЙ ПЕРЕХВАТЧИК ДЛЯ ДАТЫ РЕГИСТРАЦИИ (Без заголовка) ---
+                    # --- ПЕРЕХВАТЧИК ДЛЯ ДАТЫ (Без заголовка) ---
                     vals = list(_temp_dict2.values())
                     if len(vals) >= 3 and (
                             re_var(['registr'], vals[0]) or re_var(['bejegyz'],
-                                                                   vals[0])):
+                                                                   vals[
+                                                                       0]) or re_var(
+                            ['change', 'request'], vals[0])):
                         CR_d['General_information']['CR_number'] = vals[1]
                         CR_d['General_information']['Reg_date'] = vals[2]
                         continue
@@ -788,7 +794,6 @@ def main_func(table_name):
 
     elif doc_mode == 'CR':
         dict_of_reg_value_local = dict_of_reg_value_CR.copy()
-        # Добавлена инициализация новых полей, чтобы не было ошибок
         CR_d = {
             'General_information': {'CR_number': None, 'Organization': None,
                                     'Initiator': None, 'Responsible': None,
@@ -950,11 +955,13 @@ def main_func(table_name):
                 if not _temp_dict2:
                     continue
 
-                # --- СПЕЦИАЛЬНЫЙ ПЕРЕХВАТЧИК ДЛЯ ДАТЫ РЕГИСТРАЦИИ (Без заголовка) ---
+                # --- ПЕРЕХВАТЧИК ДЛЯ ДАТЫ (Без заголовка) ---
                 vals = list(_temp_dict2.values())
                 if len(vals) >= 3 and (
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
-                                                               vals[0])):
+                                                               vals[
+                                                                   0]) or re_var(
+                        ['change', 'request'], vals[0])):
                     CR_d['General_information']['CR_number'] = vals[1]
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
@@ -1015,7 +1022,6 @@ def dicts_normalization(original_dict_name):
     original_dict = result[original_dict_name].copy()
     normalized_dict['File_name'] = original_dict_name
 
-    # --- ИЗМЕНЕНА ЛОГИКА ЭКСПОРТА: ТЕПЕРЬ ПОЛЯ НЕ ЗАТИРАЮТСЯ ---
     if 'TDD' in original_dict:
         normalized_dict['Change_request_No'] = original_dict[
             'General_information'].get('CR_number')
@@ -1040,7 +1046,6 @@ def dicts_normalization(original_dict_name):
         normalized_dict['Cod_of_reason'] = original_dict[
             'General_information'].get('Reason_code')
 
-        # Берем причину из общих данных, если её там нет — собираем из таблиц TDD
         other_reason = original_dict['General_information'].get('CR_reason')
         if not other_reason:
             other_reason = '\n'.join(
