@@ -95,7 +95,7 @@ def smart_join(massive):
     return '\n'.join(massive)
 
 
-# Новая и более надежная функция для парсинга чекбоксов
+# ОБНОВЛЕННАЯ: Умный поиск чекбоксов, защищенный от ложных срабатываний
 def parse_impact_evaluation(cells, CR_d):
     impact_fields = {
         'Detailed_Design': ['detailed', 'design'],
@@ -113,41 +113,49 @@ def parse_impact_evaluation(cells, CR_d):
         if not val or not isinstance(val, str):
             continue
 
-        # Удаляем переносы строк для надежного поиска
         val_lower = val.strip().lower().replace('\n', ' ')
 
         for key, keywords in impact_fields.items():
-            # Проверяем наличие всех ключевых слов в ячейке
             if all(kw in val_lower for kw in keywords):
                 is_checked = False
 
-                # 1. Проверяем внутри самой ячейки (если чекбокс - часть текста)
-                if any(char in val_lower for char in ['☑', 'þ', '[x]', '(x)']):
+                # 1. Проверяем символы прямо внутри текста (если галочка в одной ячейке с текстом)
+                if any(char in val_lower for char in
+                       ['☑', 'þ', 'ý', '[x]', '(x)']):
                     is_checked = True
                 elif any(
                         char in val_lower for char in ['☐', '¨', '[ ]', '()']):
                     is_checked = False
                 else:
-                    # 2. Ищем символ галочки слева (с запасом в 3 ячейки из-за объединений)
+                    # 2. Ищем отдельно стоящий символ слева
                     for offset in range(1, 4):
                         if c - offset < 1: break
                         check_val = cells.get((r, c - offset))
                         if check_val is not None:
                             cv_str = str(check_val).strip().lower()
-                            if any(char in cv_str for char in
-                                   ['x', 'v', 'yes', 'igen', '☑', 'þ', '1',
-                                    '+', 'true']):
+                            if not cv_str:
+                                continue
+
+                            # ЗАЩИТА: Если длина текста больше 5 символов, значит мы "заехали" на текст соседнего столбца
+                            if len(cv_str) > 5:
+                                break
+
+                            # Строгое совпадение с типовыми маркерами галочки
+                            if cv_str in ['x', 'v', 'yes', 'igen', '1', '+',
+                                          'true', 'да', '✓', '✔']:
                                 is_checked = True
                                 break
-                            elif any(char in cv_str for char in
-                                     ['☐', '¨', 'o', '0', '-', 'q', 'false',
-                                      'no', 'nem']):
+                            elif cv_str in ['o', '0', '-', 'q', 'false', 'no',
+                                            'nem', 'нет']:
                                 is_checked = False
                                 break
-                            elif cv_str != '':
-                                # Обработка Wingdings (любой непонятный короткий символ)
-                                if len(cv_str) <= 3:
-                                    is_checked = True
+
+                            # Поиск уникальных юникод-символов (Wingdings и т.д.)
+                            if any(char in cv_str for char in ['☑', 'þ', 'ý']):
+                                is_checked = True
+                                break
+                            elif any(char in cv_str for char in ['☐', '¨']):
+                                is_checked = False
                                 break
 
                 if is_checked:
