@@ -186,7 +186,6 @@ def parse_exposition_and_dd(cells, CR_d):
 
             val_lower = val.strip().lower().replace('\n', ' ')
 
-            # 1. Извлечение текста (ищем под заголовком)
             if 'exposition of impact' in val_lower or 'hatásértékelés magyarázata' in val_lower:
                 text_found = None
                 for next_r in range(r + 1, min(r + 4, max_r + 1)):
@@ -194,7 +193,6 @@ def parse_exposition_and_dd(cells, CR_d):
                         check_val = cells.get((next_r, next_c))
                         if check_val and isinstance(check_val, str):
                             cv_lower = check_val.strip().lower()
-                            # Игнорируем текст из чекбоксов, чтобы не взять его вместо пустого текстового поля
                             if 'change of dd' not in cv_lower and 'kiviteli terv' not in cv_lower:
                                 text_found = check_val
                                 break
@@ -204,7 +202,6 @@ def parse_exposition_and_dd(cells, CR_d):
                     CR_d['General_information']['Exposition_of_Impact'][
                         'Text'] = text_found
 
-            # 2. Поиск ручных галочек (если их нет, останется NO по умолчанию)
             if 'change of dd is not required' in val_lower or 'módosítást nem igényel' in val_lower:
                 for offset in range(1, 4):
                     if c - offset < 1: continue
@@ -235,8 +232,6 @@ def parse_exposition_and_dd(cells, CR_d):
 dict_of_reg_value_FCR = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'Reg_date': ['registr', 'dat'],
-    'CR_coordinator': ['coord'],
-    'CR_number_int': ['init', 'intern'],
     'Organization': [['init', 'organ'], ['intern']],
     'Initiator': [['init'], ['posit', 'organ', 'intern']],
     'Initiator_pos': ['init', 'posit'],
@@ -261,8 +256,6 @@ dict_of_reg_value_FCR = {
     'Refuse_comment': ['refus', 'comment'],
     'Impact_DDD': ['impact', 'ddd'],
     'Impact_LDD': ['impact', 'ldd'],
-    'Impact_cost': ['cost', 'impact'],
-    'Schedule': ['schedul'],
     'Prompt_req': ['prompt', 'req'],
     'NS': ['nucl', 'saf'],
     'FS': ['fire', 'saf'],
@@ -273,16 +266,10 @@ dict_of_reg_value_FCR = {
 
 dict_of_reg_value_CRD = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
-    'CR_coordinator': ['contr', 'coord'],
-    'CR_number_int': ['init', 'intern'],
     'Organization': [['init', 'organ'], ['intern']],
     'Initiator': ['init'],
     'Document_type': ['document', 'type'],
     'Method_CR': ['method'],
-    'Contract': ['contract'],
-    'Impact_cost': ['cost', 'impact'],
-    'Schedule': ['schedul'],
-    'Comment_nont': ['comment', 'non'],
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
     'Reason_code': [['(reason.*code|okának.*kód)'], []],
@@ -295,14 +282,7 @@ dict_of_reg_value_CRD = {
 dict_of_reg_value_CR = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'Organization': [['init', 'organ'], ['intern']],
-    'Responsible': ['responsible', 'eval'],
     'Initiator': [['init'], ['organ', 'intern']],
-    'CR_coordinator': ['contr', 'coord'],
-    'CR_number_int': ['init', 'intern'],
-    'Contract': ['contract'],
-    'Impact_cost': ['cost', 'impact'],
-    'Schedule': ['schedul'],
-    'Comment_nont': ['comment', 'non'],
     'Constr_facility': [['(object.*construct|construct.*object|építkezés)'],
                         []],
     'Reason_code': [['(reason.*code|okának.*kód)'], []],
@@ -347,12 +327,10 @@ def main_func(table_name):
         dict_of_reg_value_local = dict_of_reg_value_CRD.copy()
         CR_d = {
             'General_information': {
-                'CR_number': None, 'CR_coordinator': None,
-                'CR_number_int': None, 'Organization': None, 'Initiator': None,
+                'CR_number': None, 'Organization': None, 'Initiator': None,
                 'TDD_influece': None, 'Document_type': None, 'CR_reason': None,
                 'Descr_tech_sol': None, 'NSC_category': None,
                 'Impact_1_2_3': None,
-                'Impact_DSA': None,
                 'Impact_Evaluation': {
                     'Detailed_Design': 'NO',
                     'Licensing_Documentation': 'NO',
@@ -369,14 +347,12 @@ def main_func(table_name):
                     'Change_of_DD_not_required': 'NO',
                     'Change_of_DD_is_required': 'NO'
                 },
-                'Method_CR': None, 'Comment': None, 'Contract': None,
-                'Impact_cost': None, 'Schedule': None,
-                'Comment_nont': None, 'Reg_date': None,
+                'Method_CR': None, 'Comment': None,
+                'Reg_date': None,
                 'Constr_facility': None, 'Reason_code': None,
                 'Change_type': None
             },
-            'Confirmation': {}, 'Approval': {}, 'Supp_descr_docs': {},
-            'TDD': {}, 'SSC': {},
+            'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}
         }
 
@@ -430,8 +406,6 @@ def main_func(table_name):
                 elif re_var(['non-tech'], header_text) or re_var(['nontech'],
                                                                  header_text):
                     section = 'Nontech'
-                elif re_var(['confirmat'], header_text):
-                    section = 'Confirmation'
                 elif re_var(['approv'], header_text) or re_var(['agreed'],
                                                                header_text) or re_var(
                     ['согласовано'], header_text) or re_var(['signat'],
@@ -481,8 +455,8 @@ def main_func(table_name):
                                 'person': pos_name_val, 'date': date_val}
                     continue
 
-            if section in ['TDD', 'Other_TDD', 'SSC', 'Confirmation',
-                           'Approval', 'Proposed_docs']:
+            if section in ['TDD', 'Other_TDD', 'SSC', 'Approval',
+                           'Proposed_docs']:
                 if section == 'Approval' and first_text and (
                         re_var(['close'], first_text) or re_var(
                     ['end', 'form'], first_text)):
@@ -506,11 +480,6 @@ def main_func(table_name):
                             ['kód'], _temp_dict[x]),
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
-                elif section == 'Confirmation':
-                    code_keys = list(
-                        filter(lambda x: re_var(['organ'], _temp_dict[x]),
-                               _temp_dict))
-                    if code_keys: code = cells.get((row, code_keys[0]))
                 elif section == 'Approval':
                     code_keys = list(
                         filter(lambda x: re_var(['posit'],
@@ -524,9 +493,6 @@ def main_func(table_name):
 
                 if section == 'SSC':
                     CR_d['SSC'][code] = {}
-                elif section == 'Confirmation':
-                    if code not in CR_d['Confirmation'].keys():
-                        CR_d['Confirmation'][code] = {}
                 elif section == 'Approval':
                     if code not in CR_d['Approval'].keys():
                         CR_d['Approval'][code] = {}
@@ -612,22 +578,6 @@ def main_func(table_name):
                         elif re_var(['description'],
                                     _temp_dict[column_number]):
                             CR_d['SSC'][code]['Description'] = insert_value
-                    elif section == 'Confirmation':
-                        if re_var(['posit'], _temp_dict[column_number]):
-                            position = insert_value
-                        elif re_var(['resp', 'pers'],
-                                    _temp_dict[column_number]) or re_var(
-                            ['name'], _temp_dict[column_number]):
-                            name = insert_value
-                            CR_d['Confirmation'][code][name] = {
-                                'Position': None, 'Date': None}
-                        elif re_var(['date'], _temp_dict[column_number]):
-                            date = insert_value
-                            if 'name' in locals() and name in \
-                                    CR_d['Confirmation'][code]:
-                                CR_d['Confirmation'][code][name][
-                                    'Position'] = locals().get('position')
-                                CR_d['Confirmation'][code][name]['Date'] = date
                     elif section == 'Approval':
                         if re_var(['person'],
                                   _temp_dict[column_number]) or re_var(
@@ -730,7 +680,6 @@ def main_func(table_name):
         CR_d = {
             'General_information': {
                 'CR_reason': None, 'CR_number': None, 'Reg_date': None,
-                'CR_coordinator': None, 'CR_number_int': None,
                 'Organization': None,
                 'Initiator': None, 'Initiator_pos': None,
                 'Document_type': None,
@@ -741,7 +690,6 @@ def main_func(table_name):
                 'Method_justif': None, 'Change_equipment': None,
                 'Reason_code': None,
                 'Descr_tech_sol': None, 'Final_status': None,
-                'Impact_DSA': None,
                 'Impact_Evaluation': {
                     'Detailed_Design': 'NO',
                     'Licensing_Documentation': 'NO',
@@ -762,7 +710,6 @@ def main_func(table_name):
                     'Material_eq': None, 'REPLACE?': None,
                     'Reject_comment': None, 'Refuse_comment': None,
                     'JD': {}, 'Impact_DDD': None, 'Impact_LDD': None,
-                    'Impact_cost': None, 'Schedule': None,
                     'Prompt_req': None, 'NS': None, 'FS': None, 'IS': None,
                     'ES': None, 'SS': None
                 }
@@ -1164,8 +1111,7 @@ def main_func(table_name):
         CR_d = {
             'General_information': {
                 'CR_number': None, 'Reg_date': None,
-                'Initiator': None, 'Organization': None, 'Responsible': None,
-                'Impact_DSA': None,
+                'Initiator': None, 'Organization': None,
                 'Impact_Evaluation': {
                     'Detailed_Design': 'NO',
                     'Licensing_Documentation': 'NO',
@@ -1182,15 +1128,11 @@ def main_func(table_name):
                     'Change_of_DD_not_required': 'NO',
                     'Change_of_DD_is_required': 'NO'
                 },
-                'CR_coordinator': None, 'CR_number_int': None,
-                'Contract': None,
-                'Impact_cost': None, 'Schedule': None,
-                'Comment_nont': None, 'Constr_facility': None,
+                'Constr_facility': None,
                 'Reason_code': None, 'CR_reason': None, 'Descr_tech_sol': None,
                 'Document_type': None, 'Change_type': None
             },
-            'Confirmation': {}, 'Approval': {}, 'Configur': {}, 'TDD': {},
-            'SSC': {},
+            'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}, 'Supp_descr_docs': {}
         }
 
@@ -1240,8 +1182,6 @@ def main_func(table_name):
                         ['affect', 'ssc'], header_text) or re_var(
                     ['changed', 'ssc'], header_text):
                     section = 'SSC'
-                elif re_var(['confirmat'], header_text):
-                    section = 'Confirmation'
                 elif re_var(['non-tech'], header_text) or re_var(['nontech'],
                                                                  header_text):
                     section = 'Nontech'
@@ -1294,8 +1234,8 @@ def main_func(table_name):
                                 'person': pos_name_val, 'date': date_val}
                     continue
 
-            if section in ['TDD', 'Configur', 'SSC', 'Confirmation',
-                           'Approval', 'Proposed_docs']:
+            if section in ['TDD', 'Configur', 'SSC', 'Approval',
+                           'Proposed_docs']:
                 if section == 'Approval' and first_text and (
                         re_var(['close'], first_text) or re_var(
                     ['end', 'form'], first_text)):
@@ -1306,17 +1246,6 @@ def main_func(table_name):
                                                                first_text) or re_var(
                     ['role'], first_text)):
                     _temp_dict = temp_dict_of_row(row, cells)
-                    if section == 'SSC':
-                        not_empty = \
-                            first_not_empty((row, first_col + 1), cells,
-                                            'row')[0]
-                        if not_empty:
-                            cell_of_DSA = \
-                                first_not_empty(
-                                    (not_empty[0], not_empty[1] + 1),
-                                    cells, 'row')[1]
-                            CR_d['General_information'][
-                                'Impact_DSA'] = cell_of_DSA
                     continue
 
                 if not _temp_dict: continue
@@ -1330,7 +1259,7 @@ def main_func(table_name):
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
 
-                elif section in ['Approval', 'Confirmation']:
+                elif section == 'Approval':
                     code_keys = list(
                         filter(lambda x: re_var(['posit'],
                                                 _temp_dict[x]) or re_var(
@@ -1338,7 +1267,7 @@ def main_func(table_name):
                                _temp_dict))
                     if code_keys: code = cells.get((row, code_keys[0]))
 
-                if section in ['Approval', 'Confirmation']:
+                if section == 'Approval':
                     for column_number in _temp_dict:
                         if re_var(['init'], _temp_dict[column_number]):
                             insert_value = cells.get((row, column_number))
@@ -1362,9 +1291,6 @@ def main_func(table_name):
 
                 if section == 'SSC':
                     CR_d['SSC'][code] = {}
-                elif section == 'Confirmation':
-                    if code not in CR_d['Confirmation'].keys():
-                        CR_d['Confirmation'][code] = {}
                 elif section == 'Approval':
                     if code not in CR_d['Approval'].keys():
                         CR_d['Approval'][code] = {}
@@ -1444,24 +1370,6 @@ def main_func(table_name):
                     elif section == 'SSC':
                         if re_var(['description'], _temp_dict[column_number]):
                             CR_d['SSC'][code]['Description'] = insert_value
-
-                    elif section == 'Confirmation':
-                        if re_var(['posit'], _temp_dict[column_number]):
-                            position = insert_value
-                        elif re_var(['resp', 'pers'],
-                                    _temp_dict[column_number]) or re_var(
-                            ['name'], _temp_dict[column_number]) or re_var(
-                            ['approv'], _temp_dict[column_number]):
-                            name = insert_value
-                            CR_d['Confirmation'][code][name] = {
-                                'Position': None, 'Date': None}
-                        elif re_var(['date'], _temp_dict[column_number]):
-                            date = insert_value
-                            if 'name' in locals() and name in \
-                                    CR_d['Confirmation'][code]:
-                                CR_d['Confirmation'][code][name][
-                                    'Position'] = locals().get('position')
-                                CR_d['Confirmation'][code][name]['Date'] = date
 
                     elif section == 'Approval':
                         if re_var(['person'],
@@ -1589,8 +1497,7 @@ def dicts_normalization(original_dict_name):
             'General_information'].get('CR_number')
         normalized_dict['Reg_date'] = original_dict['General_information'].get(
             'Reg_date')
-        normalized_dict['Contr_change_coord'] = original_dict[
-            'General_information'].get('CR_coordinator')
+        normalized_dict['Contr_change_coord'] = None
         normalized_dict['Type_of_changes'] = original_dict[
             'General_information'].get('Change_type')
         normalized_dict['Constr_facility'] = original_dict[
@@ -1603,8 +1510,7 @@ def dicts_normalization(original_dict_name):
             'Organization')
         normalized_dict['Change_ini'] = original_dict[
             'General_information'].get('Initiator')
-        normalized_dict['Ini_internal_CR'] = original_dict[
-            'General_information'].get('CR_number_int')
+        normalized_dict['Ini_internal_CR'] = None
         normalized_dict['Cod_of_reason'] = original_dict[
             'General_information'].get('Reason_code')
 
@@ -1627,9 +1533,8 @@ def dicts_normalization(original_dict_name):
             'NSC_category'] = None
         normalized_dict['Impact_direct_123'] = True if original_dict[
             'SSC'] else False
-        normalized_dict['Impact_DSA'] = original_dict[
-            'General_information'].get(
-            'Impact_DSA')
+
+        normalized_dict['Impact_DSA'] = None
         normalized_dict['Impact_structural_geom'] = normalized_dict[
             'Impact_nucl'] = normalized_dict['Impact_fire'] = normalized_dict[
             'Impact_industrial'] = normalized_dict['Impact_environment'] = \
@@ -1637,26 +1542,11 @@ def dicts_normalization(original_dict_name):
             normalized_dict['Prompt_TDD?'] = normalized_dict[
             'Material_equivalent?'] = normalized_dict[
             'Comments_eng_eval'] = None
-        normalized_dict['Impact_contract'] = \
-            original_dict['General_information'].get('Contract')
-        normalized_dict['Impact_cost'] = original_dict[
-            'General_information'].get('Impact_cost')
-        normalized_dict['Impact_schedule'] = original_dict[
-            'General_information'].get('Schedule')
-        normalized_dict['Comments_nont_ass'] = original_dict[
-            'General_information'].get('Comment_nont')
 
-        for key in original_dict['Confirmation']:
-            _temp_dict = {}
-            if original_dict['Confirmation'][key]:
-                _temp_name = list(original_dict['Confirmation'][key].keys())[0]
-                _temp_dict['Role'] = None
-                _temp_dict['Position'] = key
-                _temp_dict['Name_sur'] = _temp_name
-                _temp_dict['FMV_number'] = _temp_dict['HAEA_reg'] = None
-                _temp_dict['Date'] = \
-                    original_dict['Confirmation'][key][_temp_name]['Date']
-                normalized_dict['Signature_list'].append(_temp_dict)
+        normalized_dict['Impact_contract'] = None
+        normalized_dict['Impact_cost'] = None
+        normalized_dict['Impact_schedule'] = None
+        normalized_dict['Comments_nont_ass'] = None
 
         for key in original_dict['Approval']:
             _temp_dict = {}
@@ -1736,8 +1626,7 @@ def dicts_normalization(original_dict_name):
             original_dict['General_information']['CR_number']
         normalized_dict['Reg_date'] = original_dict['General_information'][
             'Reg_date']
-        normalized_dict['Contr_change_coord'] = \
-            original_dict['General_information']['CR_coordinator']
+        normalized_dict['Contr_change_coord'] = None
         normalized_dict['Type_of_changes'] = \
             original_dict['General_information']['Change_type']
         normalized_dict['Constr_facility'] = \
@@ -1749,8 +1638,7 @@ def dicts_normalization(original_dict_name):
             'Organization']
         normalized_dict['Change_ini'] = original_dict['General_information'][
             'Initiator']
-        normalized_dict['Ini_internal_CR'] = \
-            original_dict['General_information']['CR_number_int']
+        normalized_dict['Ini_internal_CR'] = None
         normalized_dict['Cod_of_reason'] = \
             original_dict['General_information']['Reason_code']
         normalized_dict['Other_reason'] = original_dict['General_information'][
@@ -1793,10 +1681,8 @@ def dicts_normalization(original_dict_name):
                                                                'Evaluation'][
                                                                'Refuse_comment']])
         normalized_dict['Impact_contract'] = None
-        normalized_dict['Impact_cost'] = \
-            original_dict['General_information']['Evaluation']['Impact_cost']
-        normalized_dict['Impact_schedule'] = \
-            original_dict['General_information']['Evaluation']['Schedule']
+        normalized_dict['Impact_cost'] = None
+        normalized_dict['Impact_schedule'] = None
         normalized_dict['Comments_nont_ass'] = None
 
         for key in original_dict['Approval']:
