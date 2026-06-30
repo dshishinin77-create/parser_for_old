@@ -186,6 +186,7 @@ def parse_exposition_and_dd(cells, CR_d):
 
             val_lower = val.strip().lower().replace('\n', ' ')
 
+            # 1. Извлечение текста
             if 'exposition of impact' in val_lower or 'hatásértékelés magyarázata' in val_lower:
                 text_found = None
                 for next_r in range(r + 1, min(r + 4, max_r + 1)):
@@ -202,6 +203,7 @@ def parse_exposition_and_dd(cells, CR_d):
                     CR_d['General_information']['Exposition_of_Impact'][
                         'Text'] = text_found
 
+            # 2. Поиск ручных галочек
             if 'change of dd is not required' in val_lower or 'módosítást nem igényel' in val_lower:
                 for offset in range(1, 4):
                     if c - offset < 1: continue
@@ -352,7 +354,7 @@ def main_func(table_name):
                 'Constr_facility': None, 'Reason_code': None,
                 'Change_type': None
             },
-            'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {},
+            'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}
         }
 
@@ -450,18 +452,14 @@ def main_func(table_name):
                             if pos_name_val:
                                 CR_d['General_information']['Initiator'] = str(
                                     pos_name_val)
-                        else:
-                            CR_d['Approval'][role_str] = {
-                                'person': pos_name_val, 'date': date_val}
                     continue
 
-            if section in ['TDD', 'Other_TDD', 'SSC', 'Approval',
-                           'Proposed_docs']:
-                if section == 'Approval' and first_text and (
-                        re_var(['close'], first_text) or re_var(
-                    ['end', 'form'], first_text)):
-                    break
+            if section == 'Approval' and first_text and (
+                    re_var(['close'], first_text) or re_var(
+                ['end', 'form'], first_text)):
+                break
 
+            if section in ['TDD', 'Other_TDD', 'SSC', 'Proposed_docs']:
                 if first_text and (
                         re_var(['code'], first_text) or re_var(['organ'],
                                                                first_text) or re_var(
@@ -473,29 +471,18 @@ def main_func(table_name):
                 if not _temp_dict: continue
 
                 code = None
-                if section in ['TDD', 'Other_TDD', 'SSC', 'Proposed_docs']:
-                    code_keys = list(
-                        filter(lambda x: re_var(['code'],
-                                                _temp_dict[x]) or re_var(
-                            ['kód'], _temp_dict[x]),
-                               _temp_dict))
-                    if code_keys: code = cells.get((row, code_keys[0]))
-                elif section == 'Approval':
-                    code_keys = list(
-                        filter(lambda x: re_var(['posit'],
-                                                _temp_dict[x]) or re_var(
-                            ['code'], _temp_dict[x]),
-                               _temp_dict))
-                    if code_keys: code = cells.get((row, code_keys[0]))
+                code_keys = list(
+                    filter(lambda x: re_var(['code'],
+                                            _temp_dict[x]) or re_var(
+                        ['kód'], _temp_dict[x]),
+                           _temp_dict))
+                if code_keys: code = cells.get((row, code_keys[0]))
 
                 if not code:
                     continue
 
                 if section == 'SSC':
                     CR_d['SSC'][code] = {}
-                elif section == 'Approval':
-                    if code not in CR_d['Approval'].keys():
-                        CR_d['Approval'][code] = {}
                 elif section == 'Proposed_docs':
                     if code not in CR_d[
                         'List of documents proposed change'].keys():
@@ -578,13 +565,6 @@ def main_func(table_name):
                         elif re_var(['description'],
                                     _temp_dict[column_number]):
                             CR_d['SSC'][code]['Description'] = insert_value
-                    elif section == 'Approval':
-                        if re_var(['person'],
-                                  _temp_dict[column_number]) or re_var(
-                            ['name'], _temp_dict[column_number]):
-                            CR_d['Approval'][code]['person'] = insert_value
-                        elif re_var(['date'], _temp_dict[column_number]):
-                            CR_d['Approval'][code]['date'] = insert_value
 
             elif section == 'Sup_doc':
                 if first_text and not (
@@ -714,7 +694,6 @@ def main_func(table_name):
                     'ES': None, 'SS': None
                 }
             },
-            'Approval': [],
             'Supp_descr_docs': {},
             'TDD_sets': {},
             'SSC': {}
@@ -837,17 +816,13 @@ def main_func(table_name):
                             if pos_name_val:
                                 CR_d['General_information']['Initiator'] = str(
                                     pos_name_val)
-                        else:
-                            CR_d['Approval'].append(
-                                {'Position': role_str, 'Name': pos_name_val,
-                                 'Date': date_val})
                     continue
 
-            if section in ['TDD', 'SSC', 'Approval']:
-                if section == 'Close' and first_text and re_var(
-                        ['end', 'form'], first_text):
-                    break
+            if section == 'Close' and first_text and re_var(['end', 'form'],
+                                                            first_text):
+                break
 
+            if section in ['TDD', 'SSC']:
                 if first_text and (
                         re_var(['code'], first_text) or re_var(['posit'],
                                                                first_text) or re_var(
@@ -859,26 +834,16 @@ def main_func(table_name):
                     continue
 
                 code = None
-                if section in ['TDD', 'SSC']:
-                    code_keys = list(
-                        filter(lambda x: re_var(['code'], _temp_dict[x]),
-                               _temp_dict))
-                    if code_keys: code = cells.get((row, code_keys[0]))
-                elif section == 'Approval':
-                    code_keys = list(
-                        filter(lambda x: re_var(['posit'],
-                                                _temp_dict[x]) or re_var(
-                            ['code'], _temp_dict[x]),
-                               _temp_dict))
-                    if code_keys: code = cells.get((row, code_keys[0]))
+                code_keys = list(
+                    filter(lambda x: re_var(['code'], _temp_dict[x]),
+                           _temp_dict))
+                if code_keys: code = cells.get((row, code_keys[0]))
 
                 if not code:
                     continue
 
                 if section == 'SSC':
                     CR_d['SSC'][code] = {}
-                elif section == 'Approval':
-                    CR_d['Approval'].append({'Position': code})
                 else:
                     if code not in CR_d['TDD_sets'].keys():
                         CR_d['TDD_sets'][code] = {}
@@ -992,13 +957,6 @@ def main_func(table_name):
                         elif re_var(['component'],
                                     _temp_dict[column_number]):
                             CR_d['SSC'][code]['Component'] = insert_value
-                    if section == 'Approval':
-                        if re_var(['person'],
-                                  _temp_dict[column_number]) or re_var(
-                            ['name'], _temp_dict[column_number]):
-                            CR_d['Approval'][-1]['Name'] = insert_value
-                        elif re_var(['date'], _temp_dict[column_number]):
-                            CR_d['Approval'][-1]['Date'] = insert_value
 
             elif section == 'Sup_doc' or (
                     doc_mode == 'FCR' and section == 'Evaluation' and subsection == 'JD'):
@@ -1132,7 +1090,7 @@ def main_func(table_name):
                 'Reason_code': None, 'CR_reason': None, 'Descr_tech_sol': None,
                 'Document_type': None, 'Change_type': None
             },
-            'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {},
+            'Configur': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}, 'Supp_descr_docs': {}
         }
 
@@ -1229,18 +1187,14 @@ def main_func(table_name):
                             if pos_name_val:
                                 CR_d['General_information']['Initiator'] = str(
                                     pos_name_val)
-                        else:
-                            CR_d['Approval'][role_str] = {
-                                'person': pos_name_val, 'date': date_val}
                     continue
 
-            if section in ['TDD', 'Configur', 'SSC', 'Approval',
-                           'Proposed_docs']:
-                if section == 'Approval' and first_text and (
-                        re_var(['close'], first_text) or re_var(
-                    ['end', 'form'], first_text)):
-                    break
+            if section == 'Approval' and first_text and (
+                    re_var(['close'], first_text) or re_var(
+                ['end', 'form'], first_text)):
+                break
 
+            if section in ['TDD', 'Configur', 'SSC', 'Proposed_docs']:
                 if first_text and (
                         re_var(['code'], first_text) or re_var(['posit'],
                                                                first_text) or re_var(
@@ -1251,49 +1205,18 @@ def main_func(table_name):
                 if not _temp_dict: continue
 
                 code = None
-                if section in ['TDD', 'Configur', 'SSC', 'Proposed_docs']:
-                    code_keys = list(
-                        filter(lambda x: re_var(['code'],
-                                                _temp_dict[x]) or re_var(
-                            ['kód'], _temp_dict[x]),
-                               _temp_dict))
-                    if code_keys: code = cells.get((row, code_keys[0]))
-
-                elif section == 'Approval':
-                    code_keys = list(
-                        filter(lambda x: re_var(['posit'],
-                                                _temp_dict[x]) or re_var(
-                            ['code'], _temp_dict[x]),
-                               _temp_dict))
-                    if code_keys: code = cells.get((row, code_keys[0]))
-
-                if section == 'Approval':
-                    for column_number in _temp_dict:
-                        if re_var(['init'], _temp_dict[column_number]):
-                            insert_value = cells.get((row, column_number))
-                            if insert_value:
-                                val = str(insert_value)
-                                pos_val = cells.get(
-                                    (row, code_keys[0])) if code_keys else ""
-                                if pos_val and str(pos_val).strip():
-                                    val = f"{pos_val} - {val}"
-                                if not CR_d['General_information'][
-                                    'Initiator']:
-                                    CR_d['General_information'][
-                                        'Initiator'] = val
-                                elif val not in CR_d['General_information'][
-                                    'Initiator']:
-                                    CR_d['General_information'][
-                                        'Initiator'] += f"\n{val}"
+                code_keys = list(
+                    filter(lambda x: re_var(['code'],
+                                            _temp_dict[x]) or re_var(
+                        ['kód'], _temp_dict[x]),
+                           _temp_dict))
+                if code_keys: code = cells.get((row, code_keys[0]))
 
                 if not code:
                     continue
 
                 if section == 'SSC':
                     CR_d['SSC'][code] = {}
-                elif section == 'Approval':
-                    if code not in CR_d['Approval'].keys():
-                        CR_d['Approval'][code] = {}
                 elif section == 'Proposed_docs':
                     if code not in list(
                             CR_d['List of documents proposed change'].keys()):
@@ -1370,15 +1293,6 @@ def main_func(table_name):
                     elif section == 'SSC':
                         if re_var(['description'], _temp_dict[column_number]):
                             CR_d['SSC'][code]['Description'] = insert_value
-
-                    elif section == 'Approval':
-                        if re_var(['person'],
-                                  _temp_dict[column_number]) or re_var(
-                            ['name'], _temp_dict[column_number]) or re_var(
-                            ['approv'], _temp_dict[column_number]):
-                            CR_d['Approval'][code]['person'] = insert_value
-                        elif re_var(['date'], _temp_dict[column_number]):
-                            CR_d['Approval'][code]['date'] = insert_value
 
             elif section == 'Sup_doc':
                 if first_text and not (
@@ -1548,20 +1462,6 @@ def dicts_normalization(original_dict_name):
         normalized_dict['Impact_schedule'] = None
         normalized_dict['Comments_nont_ass'] = None
 
-        for key in original_dict['Approval']:
-            _temp_dict = {}
-            _temp_dict['Role'] = None
-            _temp_dict['Position'] = key
-            if isinstance(original_dict['Approval'][key], dict):
-                _temp_dict['Name_sur'] = original_dict['Approval'][key].get(
-                    'person')
-                _temp_dict['Date'] = original_dict['Approval'][key].get('date')
-            else:
-                _temp_dict['Name_sur'] = original_dict['Approval'][key]
-                _temp_dict['Date'] = None
-            _temp_dict['FMV_number'] = _temp_dict['HAEA_reg'] = None
-            normalized_dict['Signature_list'].append(_temp_dict)
-
         for key in original_dict['TDD']:
             _temp_dict = {}
             _temp_dict['Type'] = 'TDD'
@@ -1655,44 +1555,56 @@ def dicts_normalization(original_dict_name):
             'SSC'] else False
         normalized_dict['Impact_DSA'] = None
         normalized_dict['Impact_structural_geom'] = \
-            original_dict['General_information']['Evaluation']['SS']
+            original_dict['General_information']['Evaluation'][
+                'SS'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Impact_nucl'] = \
-            original_dict['General_information']['Evaluation']['NS']
+            original_dict['General_information']['Evaluation'][
+                'NS'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Impact_fire'] = \
-            original_dict['General_information']['Evaluation']['FS']
+            original_dict['General_information']['Evaluation'][
+                'FS'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Impact_industrial'] = \
-            original_dict['General_information']['Evaluation']['IS']
+            original_dict['General_information']['Evaluation'][
+                'IS'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Impact_environment'] = \
-            original_dict['General_information']['Evaluation']['ES']
+            original_dict['General_information']['Evaluation'][
+                'ES'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Impact_TDD'] = \
-            original_dict['General_information']['Evaluation']['Impact_DDD']
+            original_dict['General_information']['Evaluation'][
+                'Impact_DDD'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Impact_lic_doc'] = \
-            original_dict['General_information']['Evaluation']['Impact_LDD']
+            original_dict['General_information']['Evaluation'][
+                'Impact_LDD'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Prompt_TDD?'] = \
-            original_dict['General_information']['Evaluation']['Prompt_req']
+            original_dict['General_information']['Evaluation'][
+                'Prompt_req'] if 'Evaluation' in original_dict[
+                'General_information'] else None
         normalized_dict['Material_equivalent?'] = \
-            original_dict['General_information']['Evaluation']['Material_eq']
-        normalized_dict['Comments_eng_eval'] = smart_join([original_dict[
-                                                               'General_information'][
-                                                               'Evaluation'][
-                                                               'Reject_comment'],
-                                                           original_dict[
-                                                               'General_information'][
-                                                               'Evaluation'][
-                                                               'Refuse_comment']])
+            original_dict['General_information']['Evaluation'][
+                'Material_eq'] if 'Evaluation' in original_dict[
+                'General_information'] else None
+
+        comments_eng_eval = None
+        if 'Evaluation' in original_dict['General_information']:
+            comments_eng_eval = smart_join([
+                original_dict['General_information']['Evaluation'].get(
+                    'Reject_comment'),
+                original_dict['General_information']['Evaluation'].get(
+                    'Refuse_comment')
+            ])
+        normalized_dict['Comments_eng_eval'] = comments_eng_eval
+
         normalized_dict['Impact_contract'] = None
         normalized_dict['Impact_cost'] = None
         normalized_dict['Impact_schedule'] = None
         normalized_dict['Comments_nont_ass'] = None
-
-        for key in original_dict['Approval']:
-            _temp_dict = {}
-            _temp_dict['Role'] = None
-            _temp_dict['Position'] = key['Position']
-            _temp_dict['Name_sur'] = key['Name']
-            _temp_dict['FMV_number'] = _temp_dict['HAEA_reg'] = None
-            _temp_dict['Date'] = key['Date']
-            normalized_dict['Signature_list'].append(_temp_dict)
 
         for key in original_dict['TDD_sets']:
             for document in original_dict['TDD_sets'][key]['Documents']:
