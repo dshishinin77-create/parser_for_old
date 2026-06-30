@@ -174,7 +174,6 @@ def parse_impact_evaluation(cells, CR_d):
                 continue
 
 
-# НОВАЯ ФУНКЦИЯ для "Exposition of Impact"
 def parse_exposition_and_dd(cells, CR_d):
     if not cells: return
     max_r = max(r for r, c in cells.keys())
@@ -641,7 +640,11 @@ def main_func(table_name):
                 if first_text and not (
                         re_var(['file', 'name'], first_text) or re_var(
                     ['details', 'document'], first_text) or re_var(
-                    ['dokumentumok', 'adatai'], first_text)):
+                    ['dokumentumok', 'adatai'], first_text) or re_var(
+                    ['initiat'], first_text) or re_var(
+                    ['kezdem'], first_text) or re_var(
+                    ['role'], first_text) or re_var(
+                    ['szerep'], first_text)):
                     curr_cell, val = first_not_empty((row, first_col + 1),
                                                      cells, 'row')
                     if val:
@@ -1055,7 +1058,11 @@ def main_func(table_name):
                 if first_text and not (
                         re_var(['file', 'name'], first_text) or re_var(
                     ['details', 'document'], first_text) or re_var(
-                    ['dokumentumok', 'adatai'], first_text)):
+                    ['dokumentumok', 'adatai'], first_text) or re_var(
+                    ['initiat'], first_text) or re_var(
+                    ['kezdem'], first_text) or re_var(
+                    ['role'], first_text) or re_var(
+                    ['szerep'], first_text)):
                     if section == 'Sup_doc':
                         if first_text in CR_d['Supp_descr_docs'].keys():
                             curr_cell, val = first_not_empty(
@@ -1469,7 +1476,11 @@ def main_func(table_name):
                 if first_text and not (
                         re_var(['file', 'name'], first_text) or re_var(
                     ['details', 'document'], first_text) or re_var(
-                    ['dokumentumok', 'adatai'], first_text)):
+                    ['dokumentumok', 'adatai'], first_text) or re_var(
+                    ['initiat'], first_text) or re_var(
+                    ['kezdem'], first_text) or re_var(
+                    ['role'], first_text) or re_var(
+                    ['szerep'], first_text)):
                     curr_cell, val = first_not_empty((row, first_col + 1),
                                                      cells, 'row')
                     if val:
