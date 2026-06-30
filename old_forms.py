@@ -95,64 +95,64 @@ def smart_join(massive):
     return '\n'.join(massive)
 
 
-# Новая функция для парсинга чекбоксов "Impact Evaluation"
-def parse_impact_evaluation(row, last_col, cells, CR_d):
+# Новая и более надежная функция для парсинга чекбоксов
+def parse_impact_evaluation(cells, CR_d):
     impact_fields = {
-        ('detailed design', 'részletes tervezés'): 'Detailed_Design',
-        ('licensing documentation',
-         'engedélyezési dokumentáció'): 'Licensing_Documentation',
-        ('structural reliability',
-         'szerkezeti megbízhatóság'): 'Structural_Reliability',
-        ('industrial safety', 'ipari biztonság'): 'Industrial_Safety',
-        ('ecology impact', 'ökológia hatás'): 'Ecology_Impact',
-        ('fire safety', 'tűzbiztonság'): 'Fire_Safety',
-        ('schedule', 'ütemezés'): 'Schedule_Impact',
-        ('cost impact', 'költséghatás'): 'Cost_Impact',
-        ('contract', 'szerződés'): 'Contract_Impact'
+        'Detailed_Design': ['detailed', 'design'],
+        'Licensing_Documentation': ['licensing', 'documentation'],
+        'Structural_Reliability': ['structural', 'reliability'],
+        'Industrial_Safety': ['industrial', 'safety'],
+        'Ecology_Impact': ['ecology', 'impact'],
+        'Fire_Safety': ['fire', 'safety'],
+        'Schedule_Impact': ['schedule', 'ütemezés'],
+        'Cost_Impact': ['cost', 'impact'],
+        'Contract_Impact': ['contract', 'szerződés']
     }
 
-    for col in range(1, last_col + 1):
-        cell_val = cells.get((row, col))
-        if cell_val and isinstance(cell_val, str):
-            cell_str_lower = cell_val.strip().lower()
+    for (r, c), val in cells.items():
+        if not val or not isinstance(val, str):
+            continue
 
-            for key_tuple, field_name in impact_fields.items():
-                if key_tuple[0] in cell_str_lower and key_tuple[
-                    1] in cell_str_lower:
+        # Удаляем переносы строк для надежного поиска
+        val_lower = val.strip().lower().replace('\n', ' ')
+
+        for key, keywords in impact_fields.items():
+            # Проверяем наличие всех ключевых слов в ячейке
+            if all(kw in val_lower for kw in keywords):
+                is_checked = False
+
+                # 1. Проверяем внутри самой ячейки (если чекбокс - часть текста)
+                if any(char in val_lower for char in ['☑', 'þ', '[x]', '(x)']):
+                    is_checked = True
+                elif any(
+                        char in val_lower for char in ['☐', '¨', '[ ]', '()']):
                     is_checked = False
-
-                    # 1. Проверяем внутри самой ячейки (на случай если текст и чекбокс в одной ячейке)
-                    if any(c in cell_str_lower for c in
-                           ['☑', 'þ', '[x]', '(x)']):
-                        is_checked = True
-                    elif any(c in cell_str_lower for c in
-                             ['☐', '¨', '[ ]', '()']):
-                        is_checked = False
-                    else:
-                        # 2. Проверяем ячейки слева (с учетом возможных объединений ячеек)
-                        for offset in range(1, 4):
-                            if col - offset < 1: break
-                            check_val = cells.get((row, col - offset))
-                            if check_val:
-                                cv_str = str(check_val).strip().lower()
-                                if any(c in cv_str for c in
-                                       ['x', 'v', 'yes', 'igen', '☑', 'þ', '1',
-                                        '+']):
+                else:
+                    # 2. Ищем символ галочки слева (с запасом в 3 ячейки из-за объединений)
+                    for offset in range(1, 4):
+                        if c - offset < 1: break
+                        check_val = cells.get((r, c - offset))
+                        if check_val is not None:
+                            cv_str = str(check_val).strip().lower()
+                            if any(char in cv_str for char in
+                                   ['x', 'v', 'yes', 'igen', '☑', 'þ', '1',
+                                    '+', 'true']):
+                                is_checked = True
+                                break
+                            elif any(char in cv_str for char in
+                                     ['☐', '¨', 'o', '0', '-', 'q', 'false',
+                                      'no', 'nem']):
+                                is_checked = False
+                                break
+                            elif cv_str != '':
+                                # Обработка Wingdings (любой непонятный короткий символ)
+                                if len(cv_str) <= 3:
                                     is_checked = True
-                                    break
-                                elif any(c in cv_str for c in
-                                         ['☐', '¨', 'o', '0', '-', 'q']):
-                                    is_checked = False
-                                    break
-                                elif cv_str != '':
-                                    is_checked = True
-                                    break
+                                break
 
-                    if 'Impact_Evaluation' not in CR_d:
-                        CR_d['Impact_Evaluation'] = {}
-
-                    CR_d['Impact_Evaluation'][
-                        field_name] = 'YES' if is_checked else 'NO'
+                if is_checked:
+                    CR_d['General_information']['Impact_Evaluation'][
+                        key] = 'YES'
 
 
 dict_of_reg_value_FCR = {
@@ -269,24 +269,37 @@ def main_func(table_name):
     if doc_mode == 'CRD':
         dict_of_reg_value_local = dict_of_reg_value_CRD.copy()
         CR_d = {
-            'General_information': {'CR_number': None, 'CR_coordinator': None,
-                                    'CR_number_int': None,
-                                    'Organization': None, 'Initiator': None,
-                                    'TDD_influece': None,
-                                    'Document_type': None, 'CR_reason': None,
-                                    'Descr_tech_sol': None,
-                                    'NSC_category': None, 'Impact_1_2_3': None,
-                                    'Impact_DSA': None, 'Method_CR': None,
-                                    'Comment': None, 'Contract': None,
-                                    'Impact_cost': None, 'Schedule': None,
-                                    'Comment_nont': None, 'Reg_date': None,
-                                    'Constr_facility': None,
-                                    'Reason_code': None,
-                                    'Change_type': None},
-            'Impact_Evaluation': {},
-            'Confirmation': {},
-            'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {},
-            'List of documents proposed change': {}}
+            'General_information': {
+                'CR_number': None, 'CR_coordinator': None,
+                'CR_number_int': None, 'Organization': None, 'Initiator': None,
+                'TDD_influece': None, 'Document_type': None, 'CR_reason': None,
+                'Descr_tech_sol': None, 'NSC_category': None,
+                'Impact_1_2_3': None,
+                'Impact_DSA': None,
+                'Impact_Evaluation': {
+                    'Detailed_Design': 'NO',
+                    'Licensing_Documentation': 'NO',
+                    'Structural_Reliability': 'NO',
+                    'Industrial_Safety': 'NO',
+                    'Ecology_Impact': 'NO',
+                    'Fire_Safety': 'NO',
+                    'Schedule_Impact': 'NO',
+                    'Cost_Impact': 'NO',
+                    'Contract_Impact': 'NO'
+                },
+                'Method_CR': None, 'Comment': None, 'Contract': None,
+                'Impact_cost': None, 'Schedule': None,
+                'Comment_nont': None, 'Reg_date': None,
+                'Constr_facility': None, 'Reason_code': None,
+                'Change_type': None
+            },
+            'Confirmation': {}, 'Approval': {}, 'Supp_descr_docs': {},
+            'TDD': {}, 'SSC': {},
+            'List of documents proposed change': {}
+        }
+
+        parse_impact_evaluation(cells, CR_d)
+
         section = 'General'
         prev_section = 'General'
         _temp_dict = {}
@@ -296,8 +309,6 @@ def main_func(table_name):
                     lambda x: x[0] == row and x[1] > last_cell[1] and cells[x],
                     cells)):
                 continue
-
-            parse_impact_evaluation(row, last_cell[1], cells, CR_d)
 
             if not any(
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
@@ -632,15 +643,29 @@ def main_func(table_name):
         CR_d = {
             'General_information': {
                 'CR_reason': None, 'CR_number': None, 'Reg_date': None,
-                'CR_coordinator': None,
-                'CR_number_int': None, 'Organization': None, 'Initiator': None,
-                'Initiator_pos': None,
-                'Document_type': None, 'Change_type': None,
-                'Activity_type': None, 'Constr_facility': None,
+                'CR_coordinator': None, 'CR_number_int': None,
+                'Organization': None,
+                'Initiator': None, 'Initiator_pos': None,
+                'Document_type': None,
+                'Change_type': None, 'Activity_type': None,
+                'Constr_facility': None,
                 'Ini_Method_CR': None, 'Method_CR': None,
-                'Ini_Method_justif': None, 'Method_justif': None,
-                'Change_equipment': None, 'Reason_code': None,
+                'Ini_Method_justif': None,
+                'Method_justif': None, 'Change_equipment': None,
+                'Reason_code': None,
                 'Descr_tech_sol': None, 'Final_status': None,
+                'Impact_DSA': None,
+                'Impact_Evaluation': {
+                    'Detailed_Design': 'NO',
+                    'Licensing_Documentation': 'NO',
+                    'Structural_Reliability': 'NO',
+                    'Industrial_Safety': 'NO',
+                    'Ecology_Impact': 'NO',
+                    'Fire_Safety': 'NO',
+                    'Schedule_Impact': 'NO',
+                    'Cost_Impact': 'NO',
+                    'Contract_Impact': 'NO'
+                },
                 'Evaluation': {
                     'Material_eq': None, 'REPLACE?': None,
                     'Reject_comment': None, 'Refuse_comment': None,
@@ -650,12 +675,14 @@ def main_func(table_name):
                     'ES': None, 'SS': None
                 }
             },
-            'Impact_Evaluation': {},
             'Approval': [],
             'Supp_descr_docs': {},
             'TDD_sets': {},
             'SSC': {}
         }
+
+        parse_impact_evaluation(cells, CR_d)
+
         section = 'General'
         prev_section = 'General'
         subsection = False
@@ -668,8 +695,6 @@ def main_func(table_name):
                     cells)):
                 warning += 1
                 continue
-
-            parse_impact_evaluation(row, last_cell[1], cells, CR_d)
 
             if not any(
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
@@ -1040,22 +1065,35 @@ def main_func(table_name):
         dict_of_reg_value_local = dict_of_reg_value_CR.copy()
 
         CR_d = {
-            'General_information': {'CR_number': None, 'Reg_date': None,
-                                    'Initiator': None,
-                                    'Organization': None, 'Responsible': None,
-                                    'Impact_DSA': None, 'CR_coordinator': None,
-                                    'CR_number_int': None, 'Contract': None,
-                                    'Impact_cost': None, 'Schedule': None,
-                                    'Comment_nont': None,
-                                    'Constr_facility': None,
-                                    'Reason_code': None,
-                                    'CR_reason': None, 'Descr_tech_sol': None,
-                                    'Document_type': None,
-                                    'Change_type': None},
-            'Impact_Evaluation': {},
-            'Confirmation': {},
-            'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {},
-            'List of documents proposed change': {}, 'Supp_descr_docs': {}}
+            'General_information': {
+                'CR_number': None, 'Reg_date': None,
+                'Initiator': None, 'Organization': None, 'Responsible': None,
+                'Impact_DSA': None,
+                'Impact_Evaluation': {
+                    'Detailed_Design': 'NO',
+                    'Licensing_Documentation': 'NO',
+                    'Structural_Reliability': 'NO',
+                    'Industrial_Safety': 'NO',
+                    'Ecology_Impact': 'NO',
+                    'Fire_Safety': 'NO',
+                    'Schedule_Impact': 'NO',
+                    'Cost_Impact': 'NO',
+                    'Contract_Impact': 'NO'
+                },
+                'CR_coordinator': None, 'CR_number_int': None,
+                'Contract': None,
+                'Impact_cost': None, 'Schedule': None,
+                'Comment_nont': None, 'Constr_facility': None,
+                'Reason_code': None, 'CR_reason': None, 'Descr_tech_sol': None,
+                'Document_type': None, 'Change_type': None
+            },
+            'Confirmation': {}, 'Approval': {}, 'Configur': {}, 'TDD': {},
+            'SSC': {},
+            'List of documents proposed change': {}, 'Supp_descr_docs': {}
+        }
+
+        parse_impact_evaluation(cells, CR_d)
+
         section = 'General'
         prev_section = 'General'
         _temp_dict = {}
@@ -1065,8 +1103,6 @@ def main_func(table_name):
                     lambda x: x[0] == row and x[1] > last_cell[1] and cells[x],
                     cells)):
                 continue
-
-            parse_impact_evaluation(row, last_cell[1], cells, CR_d)
 
             if not any(
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
