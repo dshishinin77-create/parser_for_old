@@ -108,75 +108,56 @@ def parse_impact_evaluation(cells, CR_d):
         'Contract_Impact': ['contract', 'szerződés']
     }
 
-    # Строгие списки символов. Никаких догадок по длине текста.
-    checked_markers = ['x', 'v', 'yes', 'igen', '1', 'да', '✓', '✔', '☑', '☒',
-                       'þ', 'ý', 'r', 'p', '+']
-    unchecked_markers = ['o', '0', '-', 'no', 'nem', 'нет', '☐', '¨', 'q', '£',
-                         'm']
-
-    if not cells: return
-    max_r = max(r for r, c in cells.keys())
-    max_c = max(c for r, c in cells.keys())
+    print("\n" + "=" * 60)
+    print("🔍 [ДИАГНОСТИКА ЧЕКБОКСОВ] ПОЖАЛУЙСТА, ПРИШЛИТЕ ЭТОТ ТЕКСТ 🔍")
+    print("=" * 60)
 
     for key, keywords in impact_fields.items():
         found = False
-        for r in range(1, max_r + 1):
-            for c in range(1, max_c + 1):
-                val = cells.get((r, c))
-                if not val or not isinstance(val, str):
-                    continue
+        for (r, c), val in list(cells.items()):
+            if not val or not isinstance(val, str): continue
+            val_lower = val.strip().lower().replace('\n', ' ')
 
-                val_lower = val.strip().lower().replace('\n', ' ')
+            if all(kw in val_lower for kw in keywords):
+                print(f"\n[{key}] (строка {r}, столбец {c})")
+                print(f"  Текст: {repr(val)}")
 
-                # Ищем заголовок пункта
-                if all(kw in val_lower for kw in keywords):
-                    is_checked = False
+                is_checked = False
+                checked_symbols = ['☑', '☒', '✓', '✔', '√', 'þ', 'ý', 'ü', 'x',
+                                   'v', '1']
 
-                    # 1. Проверка внутри самой ячейки (если текст и маркер в одной)
-                    if any(m in val_lower for m in
-                           ['☑', '☒', '[x]', '(x)', 'þ', 'ý']):
-                        CR_d['General_information']['Impact_Evaluation'][
-                            key] = 'YES'
-                        found = True;
-                        break
-                    elif any(m in val_lower for m in
-                             ['☐', '¨', '[ ]', '()', '[]']):
-                        CR_d['General_information']['Impact_Evaluation'][
-                            key] = 'NO'
-                        found = True;
-                        break
+                # Проверка внутри текста
+                if any(char in val_lower for char in
+                       ['☑', '☒', '[x]', '(x)', 'þ', 'ý', '✓', 'ü']):
+                    is_checked = True
+                else:
+                    # Сканируем 5 ячеек слева
+                    for offset in range(1, 6):
+                        c_check = c - offset
+                        if c_check < 1: continue
+                        n_val = cells.get((r, c_check))
+                        print(
+                            f"  Слева [-{offset}] (столбец {c_check}): {repr(n_val)}")
 
-                    # 2. Ищем строго вокруг ячейки (влево и вправо)
-                    check_found = False
-                    for offset in [-2, -1, 1, 2]:
-                        if c + offset < 1 or c + offset > max_c: continue
-                        neighbor_val = cells.get((r, c + offset))
+                        if n_val is not None:
+                            nv_str = str(n_val).strip().lower()
+                            if nv_str and len(nv_str) <= 3:
+                                if nv_str in checked_symbols or any(
+                                        sym in nv_str for sym in
+                                        checked_symbols):
+                                    is_checked = True
 
-                        if neighbor_val is not None:
-                            nv_str = str(neighbor_val).strip().lower()
-                            if not nv_str: continue
+                CR_d['General_information']['Impact_Evaluation'][
+                    key] = 'YES' if is_checked else 'NO'
+                print(
+                    f"  --> РЕЗУЛЬТАТ ПАРСЕРА: {'YES' if is_checked else 'NO'}")
+                found = True
+                break
 
-                            # Проверяем на точное совпадение из словарей чекбоксов
-                            if nv_str in checked_markers or any(
-                                    sym in nv_str for sym in
-                                    ['☑', '☒', 'þ', 'ý', '✓']):
-                                CR_d['General_information'][
-                                    'Impact_Evaluation'][key] = 'YES'
-                                check_found = True;
-                                break
-                            elif nv_str in unchecked_markers or any(
-                                    sym in nv_str for sym in ['☐', '¨']):
-                                CR_d['General_information'][
-                                    'Impact_Evaluation'][key] = 'NO'
-                                check_found = True;
-                                break
+        if not found:
+            print(f"\n[{key}] --- ЗАГОЛОВОК НЕ НАЙДЕН В ФАЙЛЕ ---")
 
-                    if check_found:
-                        found = True;
-                        break
-
-            if found:
-                continue
+    print("=" * 60 + "\n")
 
 
 dict_of_reg_value_FCR = {
