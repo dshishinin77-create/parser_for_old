@@ -95,6 +95,66 @@ def smart_join(massive):
     return '\n'.join(massive)
 
 
+# Новая функция для парсинга чекбоксов "Impact Evaluation"
+def parse_impact_evaluation(row, last_col, cells, CR_d):
+    impact_fields = {
+        ('detailed design', 'részletes tervezés'): 'Detailed_Design',
+        ('licensing documentation',
+         'engedélyezési dokumentáció'): 'Licensing_Documentation',
+        ('structural reliability',
+         'szerkezeti megbízhatóság'): 'Structural_Reliability',
+        ('industrial safety', 'ipari biztonság'): 'Industrial_Safety',
+        ('ecology impact', 'ökológia hatás'): 'Ecology_Impact',
+        ('fire safety', 'tűzbiztonság'): 'Fire_Safety',
+        ('schedule', 'ütemezés'): 'Schedule_Impact',
+        ('cost impact', 'költséghatás'): 'Cost_Impact',
+        ('contract', 'szerződés'): 'Contract_Impact'
+    }
+
+    for col in range(1, last_col + 1):
+        cell_val = cells.get((row, col))
+        if cell_val and isinstance(cell_val, str):
+            cell_str_lower = cell_val.strip().lower()
+
+            for key_tuple, field_name in impact_fields.items():
+                if key_tuple[0] in cell_str_lower and key_tuple[
+                    1] in cell_str_lower:
+                    is_checked = False
+
+                    # 1. Проверяем внутри самой ячейки (на случай если текст и чекбокс в одной ячейке)
+                    if any(c in cell_str_lower for c in
+                           ['☑', 'þ', '[x]', '(x)']):
+                        is_checked = True
+                    elif any(c in cell_str_lower for c in
+                             ['☐', '¨', '[ ]', '()']):
+                        is_checked = False
+                    else:
+                        # 2. Проверяем ячейки слева (с учетом возможных объединений ячеек)
+                        for offset in range(1, 4):
+                            if col - offset < 1: break
+                            check_val = cells.get((row, col - offset))
+                            if check_val:
+                                cv_str = str(check_val).strip().lower()
+                                if any(c in cv_str for c in
+                                       ['x', 'v', 'yes', 'igen', '☑', 'þ', '1',
+                                        '+']):
+                                    is_checked = True
+                                    break
+                                elif any(c in cv_str for c in
+                                         ['☐', '¨', 'o', '0', '-', 'q']):
+                                    is_checked = False
+                                    break
+                                elif cv_str != '':
+                                    is_checked = True
+                                    break
+
+                    if 'Impact_Evaluation' not in CR_d:
+                        CR_d['Impact_Evaluation'] = {}
+
+                    CR_d['Impact_Evaluation'][
+                        field_name] = 'YES' if is_checked else 'NO'
+
+
 dict_of_reg_value_FCR = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'Reg_date': ['registr', 'dat'],
@@ -222,7 +282,9 @@ def main_func(table_name):
                                     'Comment_nont': None, 'Reg_date': None,
                                     'Constr_facility': None,
                                     'Reason_code': None,
-                                    'Change_type': None}, 'Confirmation': {},
+                                    'Change_type': None},
+            'Impact_Evaluation': {},
+            'Confirmation': {},
             'Approval': {}, 'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}}
         section = 'General'
@@ -234,6 +296,9 @@ def main_func(table_name):
                     lambda x: x[0] == row and x[1] > last_cell[1] and cells[x],
                     cells)):
                 continue
+
+            parse_impact_evaluation(row, last_cell[1], cells, CR_d)
+
             if not any(
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
                 continue
@@ -250,12 +315,12 @@ def main_func(table_name):
                 header_text = first_text
                 if re_var(['supporting', 'descr'], header_text) or re_var(
                         ['support', 'file'], header_text) or re_var(
-                        ['melléklet'], header_text):
+                    ['melléklet'], header_text):
                     section = 'Sup_doc'
                 elif re_var(['list', 'document', 'proposed'],
                             header_text) or re_var(
-                        ['módosítását', 'javasolják'], header_text) or re_var(
-                        ['dokumentumok', 'listája'], header_text):
+                    ['módosítását', 'javasolják'], header_text) or re_var(
+                    ['dokumentumok', 'listája'], header_text):
                     section = 'Proposed_docs'
                 elif re_var(['impact', 'init', 'TDD'], header_text):
                     section = 'TDD'
@@ -275,8 +340,8 @@ def main_func(table_name):
                     section = 'Confirmation'
                 elif re_var(['approv'], header_text) or re_var(['agreed'],
                                                                header_text) or re_var(
-                        ['согласовано'], header_text) or re_var(['signat'],
-                                                                header_text):
+                    ['согласовано'], header_text) or re_var(['signat'],
+                                                            header_text):
                     section = 'Approval'
 
             if section != prev_section:
@@ -326,14 +391,14 @@ def main_func(table_name):
                            'Approval', 'Proposed_docs']:
                 if section == 'Approval' and first_text and (
                         re_var(['close'], first_text) or re_var(
-                        ['end', 'form'], first_text)):
+                    ['end', 'form'], first_text)):
                     break
 
                 if first_text and (
                         re_var(['code'], first_text) or re_var(['organ'],
                                                                first_text) or re_var(
-                        ['posit'], first_text) or re_var(['role'],
-                                                         first_text)):
+                    ['posit'], first_text) or re_var(['role'],
+                                                     first_text)):
                     _temp_dict = temp_dict_of_row(row, cells)
                     continue
 
@@ -385,23 +450,23 @@ def main_func(table_name):
                     if section == 'Proposed_docs' and insert_value:
                         if re_var(['revision'],
                                   _temp_dict[column_number]) or re_var(
-                                ['revízió'],
-                                _temp_dict[column_number]) or re_var(['rev'],
-                                                                     _temp_dict[
-                                                                         column_number]):
+                            ['revízió'],
+                            _temp_dict[column_number]) or re_var(['rev'],
+                                                                 _temp_dict[
+                                                                     column_number]):
                             if '_' in str(insert_value):
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = \
-                                str(insert_value).split('_')[0]
+                                    str(insert_value).split('_')[0]
                             else:
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = insert_value
                         elif re_var(['name'],
                                     _temp_dict[column_number]) or re_var(
-                                ['megnevezés'],
-                                _temp_dict[column_number]) or re_var(['cím'],
-                                                                     _temp_dict[
-                                                                         column_number]):
+                            ['megnevezés'],
+                            _temp_dict[column_number]) or re_var(['cím'],
+                                                                 _temp_dict[
+                                                                     column_number]):
                             CR_d['List of documents proposed change'][code][
                                 'Name'] = insert_value
 
@@ -458,7 +523,7 @@ def main_func(table_name):
                             position = insert_value
                         elif re_var(['resp', 'pers'],
                                     _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]):
+                            ['name'], _temp_dict[column_number]):
                             name = insert_value
                             CR_d['Confirmation'][code][name] = {
                                 'Position': None, 'Date': None}
@@ -472,7 +537,7 @@ def main_func(table_name):
                     elif section == 'Approval':
                         if re_var(['person'],
                                   _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]):
+                            ['name'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['person'] = insert_value
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['date'] = insert_value
@@ -480,8 +545,8 @@ def main_func(table_name):
             elif section == 'Sup_doc':
                 if first_text and not (
                         re_var(['file', 'name'], first_text) or re_var(
-                        ['details', 'document'], first_text) or re_var(
-                        ['dokumentumok', 'adatai'], first_text)):
+                    ['details', 'document'], first_text) or re_var(
+                    ['dokumentumok', 'adatai'], first_text)):
                     curr_cell, val = first_not_empty((row, first_col + 1),
                                                      cells, 'row')
                     if val:
@@ -490,10 +555,10 @@ def main_func(table_name):
             elif section in ['General', 'Final', 'Nontech']:
                 if section == 'General' and first_text and (
                         re_var(['descr', 'sol'], first_text) or re_var(
-                        ['descr', 'change'], first_text) or re_var(
-                        ['módosítások', 'leírása'], first_text)):
+                    ['descr', 'change'], first_text) or re_var(
+                    ['módosítások', 'leírása'], first_text)):
                     CR_d['General_information']['Descr_tech_sol'] = \
-                    first_not_empty((row + 1, first_col), cells, 'row')[1]
+                        first_not_empty((row + 1, first_col), cells, 'row')[1]
                     continue
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
@@ -516,7 +581,7 @@ def main_func(table_name):
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
                                                                vals[
                                                                    0]) or re_var(
-                        ['change', 'request'], vals[0])):
+                    ['change', 'request'], vals[0])):
                     CR_d['General_information']['CR_number'] = vals[1]
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
@@ -585,6 +650,7 @@ def main_func(table_name):
                     'ES': None, 'SS': None
                 }
             },
+            'Impact_Evaluation': {},
             'Approval': [],
             'Supp_descr_docs': {},
             'TDD_sets': {},
@@ -602,6 +668,8 @@ def main_func(table_name):
                     cells)):
                 warning += 1
                 continue
+
+            parse_impact_evaluation(row, last_cell[1], cells, CR_d)
 
             if not any(
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
@@ -650,7 +718,7 @@ def main_func(table_name):
                 if section == 'Evaluation' and re_var(['crit', 'imp'],
                                                       first_text): continue
                 if section == 'Evaluation' and subsection == 'JD' and re_var(
-                    ['file', 'extension'], first_text): continue
+                        ['file', 'extension'], first_text): continue
                 if section == 'General' and re_var(['field', 'change', 'fcr'],
                                                    first_text): continue
                 if section == 'General' and re_var(['change', 'init', 'for'],
@@ -661,7 +729,7 @@ def main_func(table_name):
 
                 if section == 'Approval' and re_var(['\\*', '\\*\\*'],
                                                     first_text, stop_words=[
-                        '\\*\\*\\*']): continue
+                            '\\*\\*\\*']): continue
                 if section == 'Sup_doc' and (
                         re_var(['file', 'ext'], first_text) or re_var(
                     ['end', 'init'], first_text)): continue
@@ -718,7 +786,7 @@ def main_func(table_name):
                 if first_text and (
                         re_var(['code'], first_text) or re_var(['posit'],
                                                                first_text) or re_var(
-                        ['role'], first_text)):
+                    ['role'], first_text)):
                     _temp_dict = temp_dict_of_row(row, cells)
                     continue
 
@@ -871,8 +939,8 @@ def main_func(table_name):
                     doc_mode == 'FCR' and section == 'Evaluation' and subsection == 'JD'):
                 if first_text and not (
                         re_var(['file', 'name'], first_text) or re_var(
-                        ['details', 'document'], first_text) or re_var(
-                        ['dokumentumok', 'adatai'], first_text)):
+                    ['details', 'document'], first_text) or re_var(
+                    ['dokumentumok', 'adatai'], first_text)):
                     if section == 'Sup_doc':
                         if first_text in CR_d['Supp_descr_docs'].keys():
                             curr_cell, val = first_not_empty(
@@ -892,9 +960,10 @@ def main_func(table_name):
                             CR_d['General_information']['Evaluation'][
                                 'JD'] = {}
                         curr_cell, \
-                        CR_d['General_information']['Evaluation']['JD'][
-                            first_text] = first_not_empty((row, first_col + 1),
-                                                          cells, 'row')
+                            CR_d['General_information']['Evaluation']['JD'][
+                                first_text] = first_not_empty(
+                            (row, first_col + 1),
+                            cells, 'row')
                         if re_var(['type', 'change'], first_text):
                             subsection = False
 
@@ -903,19 +972,19 @@ def main_func(table_name):
                 if section == 'General' and first_text and re_var(
                         ['descrip', 'engin', 'change'], first_text):
                     CR_d['General_information']['Descr_tech_sol'] = \
-                    first_not_empty((row + 1, 1), cells, 'row')[1]
+                        first_not_empty((row + 1, 1), cells, 'row')[1]
                     _descr_flag = 1
                 if section == 'Evaluation' and first_text and re_var(
                         ['comment', 'reason', 'reject'], first_text):
                     CR_d['General_information']['Evaluation'][
                         'Reject_comment'] = \
-                    first_not_empty((row + 1, 1), cells, 'row')[1]
+                        first_not_empty((row + 1, 1), cells, 'row')[1]
                     _descr_flag = 1
                 if section == 'Evaluation' and first_text and re_var(
                         ['comment', 'reason', 'refus'], first_text):
                     CR_d['General_information']['Evaluation'][
                         'Refuse_comment'] = \
-                    first_not_empty((row + 1, 1), cells, 'row')[1]
+                        first_not_empty((row + 1, 1), cells, 'row')[1]
                     _descr_flag = 1
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
@@ -982,7 +1051,9 @@ def main_func(table_name):
                                     'Reason_code': None,
                                     'CR_reason': None, 'Descr_tech_sol': None,
                                     'Document_type': None,
-                                    'Change_type': None}, 'Confirmation': {},
+                                    'Change_type': None},
+            'Impact_Evaluation': {},
+            'Confirmation': {},
             'Approval': {}, 'Configur': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}, 'Supp_descr_docs': {}}
         section = 'General'
@@ -994,6 +1065,9 @@ def main_func(table_name):
                     lambda x: x[0] == row and x[1] > last_cell[1] and cells[x],
                     cells)):
                 continue
+
+            parse_impact_evaluation(row, last_cell[1], cells, CR_d)
+
             if not any(
                     [cells.get((row, i)) for i in range(1, last_cell[1] + 1)]):
                 continue
@@ -1010,22 +1084,22 @@ def main_func(table_name):
                 header_text = first_text
                 if re_var(['supporting', 'descr'], header_text) or re_var(
                         ['support', 'file'], header_text) or re_var(
-                        ['melléklet'], header_text) or re_var(['csatolva'],
-                                                              header_text):
+                    ['melléklet'], header_text) or re_var(['csatolva'],
+                                                          header_text):
                     section = 'Sup_doc'
                 elif re_var(['init', 'item'], header_text) or re_var(
                         ['scope', 'change'], header_text):
                     section = 'TDD'
                 elif re_var(['list', 'document', 'proposed'],
                             header_text) or re_var(
-                        ['módosítását', 'javasolják'], header_text) or re_var(
-                        ['dokumentumok', 'listája'], header_text):
+                    ['módosítását', 'javasolják'], header_text) or re_var(
+                    ['dokumentumok', 'listája'], header_text):
                     section = 'Proposed_docs'
                 elif re_var(['conf', 'item'], header_text):
                     section = 'Configur'
                 elif re_var(['affect', 'syst'], header_text) or re_var(
                         ['affect', 'ssc'], header_text) or re_var(
-                        ['changed', 'ssc'], header_text):
+                    ['changed', 'ssc'], header_text):
                     section = 'SSC'
                 elif re_var(['confirmat'], header_text):
                     section = 'Confirmation'
@@ -1034,8 +1108,8 @@ def main_func(table_name):
                     section = 'Nontech'
                 elif re_var(['approv'], header_text) or re_var(['agreed'],
                                                                header_text) or re_var(
-                        ['согласовано'], header_text) or re_var(['signat'],
-                                                                header_text):
+                    ['согласовано'], header_text) or re_var(['signat'],
+                                                            header_text):
                     section = 'Approval'
 
             if section != prev_section:
@@ -1085,21 +1159,23 @@ def main_func(table_name):
                            'Approval', 'Proposed_docs']:
                 if section == 'Approval' and first_text and (
                         re_var(['close'], first_text) or re_var(
-                        ['end', 'form'], first_text)):
+                    ['end', 'form'], first_text)):
                     break
 
                 if first_text and (
                         re_var(['code'], first_text) or re_var(['posit'],
                                                                first_text) or re_var(
-                        ['role'], first_text)):
+                    ['role'], first_text)):
                     _temp_dict = temp_dict_of_row(row, cells)
                     if section == 'SSC':
                         not_empty = \
-                        first_not_empty((row, first_col + 1), cells, 'row')[0]
+                            first_not_empty((row, first_col + 1), cells,
+                                            'row')[0]
                         if not_empty:
                             cell_of_DSA = \
-                            first_not_empty((not_empty[0], not_empty[1] + 1),
-                                            cells, 'row')[1]
+                                first_not_empty(
+                                    (not_empty[0], not_empty[1] + 1),
+                                    cells, 'row')[1]
                             CR_d['General_information'][
                                 'Impact_DSA'] = cell_of_DSA
                     continue
@@ -1169,23 +1245,23 @@ def main_func(table_name):
                     if section == 'Proposed_docs' and insert_value:
                         if re_var(['revision'],
                                   _temp_dict[column_number]) or re_var(
-                                ['revízió'],
-                                _temp_dict[column_number]) or re_var(['rev'],
-                                                                     _temp_dict[
-                                                                         column_number]):
+                            ['revízió'],
+                            _temp_dict[column_number]) or re_var(['rev'],
+                                                                 _temp_dict[
+                                                                     column_number]):
                             if '_' in str(insert_value):
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = \
-                                str(insert_value).split('_')[0]
+                                    str(insert_value).split('_')[0]
                             else:
                                 CR_d['List of documents proposed change'][
                                     code]['Revision'] = insert_value
                         elif re_var(['name'],
                                     _temp_dict[column_number]) or re_var(
-                                ['megnevezés'],
-                                _temp_dict[column_number]) or re_var(['cím'],
-                                                                     _temp_dict[
-                                                                         column_number]):
+                            ['megnevezés'],
+                            _temp_dict[column_number]) or re_var(['cím'],
+                                                                 _temp_dict[
+                                                                     column_number]):
                             CR_d['List of documents proposed change'][code][
                                 'Name'] = insert_value
 
@@ -1235,8 +1311,8 @@ def main_func(table_name):
                             position = insert_value
                         elif re_var(['resp', 'pers'],
                                     _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]) or re_var(
-                                ['approv'], _temp_dict[column_number]):
+                            ['name'], _temp_dict[column_number]) or re_var(
+                            ['approv'], _temp_dict[column_number]):
                             name = insert_value
                             CR_d['Confirmation'][code][name] = {
                                 'Position': None, 'Date': None}
@@ -1251,8 +1327,8 @@ def main_func(table_name):
                     elif section == 'Approval':
                         if re_var(['person'],
                                   _temp_dict[column_number]) or re_var(
-                                ['name'], _temp_dict[column_number]) or re_var(
-                                ['approv'], _temp_dict[column_number]):
+                            ['name'], _temp_dict[column_number]) or re_var(
+                            ['approv'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['person'] = insert_value
                         elif re_var(['date'], _temp_dict[column_number]):
                             CR_d['Approval'][code]['date'] = insert_value
@@ -1260,8 +1336,8 @@ def main_func(table_name):
             elif section == 'Sup_doc':
                 if first_text and not (
                         re_var(['file', 'name'], first_text) or re_var(
-                        ['details', 'document'], first_text) or re_var(
-                        ['dokumentumok', 'adatai'], first_text)):
+                    ['details', 'document'], first_text) or re_var(
+                    ['dokumentumok', 'adatai'], first_text)):
                     curr_cell, val = first_not_empty((row, first_col + 1),
                                                      cells, 'row')
                     if val:
@@ -1270,10 +1346,10 @@ def main_func(table_name):
             elif section in ['General', 'Nontech']:
                 if section == 'General' and first_text and (
                         re_var(['descr', 'sol'], first_text) or re_var(
-                        ['descr', 'change'], first_text) or re_var(
-                        ['módosítások', 'leírása'], first_text)):
+                    ['descr', 'change'], first_text) or re_var(
+                    ['módosítások', 'leírása'], first_text)):
                     CR_d['General_information']['Descr_tech_sol'] = \
-                    first_not_empty((row + 1, first_col), cells, 'row')[1]
+                        first_not_empty((row + 1, first_col), cells, 'row')[1]
                     continue
 
                 _temp_dict2 = temp_dict_of_row(row, cells)
@@ -1296,7 +1372,7 @@ def main_func(table_name):
                         re_var(['registr'], vals[0]) or re_var(['bejegyz'],
                                                                vals[
                                                                    0]) or re_var(
-                        ['change', 'request'], vals[0])):
+                    ['change', 'request'], vals[0])):
                     CR_d['General_information']['CR_number'] = vals[1]
                     CR_d['General_information']['Reg_date'] = vals[2]
                     continue
