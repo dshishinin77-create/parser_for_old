@@ -95,7 +95,6 @@ def smart_join(massive):
     return '\n'.join(massive)
 
 
-# Максимально всеядная функция поиска галочек
 def parse_impact_evaluation(cells, CR_d):
     impact_fields = {
         'Detailed_Design': ['detailed', 'design'],
@@ -109,66 +108,75 @@ def parse_impact_evaluation(cells, CR_d):
         'Contract_Impact': ['contract', 'szerződés']
     }
 
-    # Базы символов и слов (включая Marlett и Wingdings)
-    checked_exact = ['x', 'v', 'yes', 'igen', '1', '1.0', '+', 'true', 'да',
-                     'a', 'r', 'p', 'ü', 'ý', 'þ', '☑', '☒', '✓', '✔', '√',
-                     'y', '*']
-    unchecked_exact = ['o', '0', '0.0', '-', 'q', 'false', 'no', 'nem', 'нет',
-                       '☐', '¨', '£', 'm', 'n/a', 'na', 'n', 'f']
-    checked_symbols = ['☑', '☒', '✓', '✔', '√', 'þ', 'ý', 'ü']
-    unchecked_symbols = ['☐', '¨']
+    # Строгие списки символов. Никаких догадок по длине текста.
+    checked_markers = ['x', 'v', 'yes', 'igen', '1', 'да', '✓', '✔', '☑', '☒',
+                       'þ', 'ý', 'r', 'p', '+']
+    unchecked_markers = ['o', '0', '-', 'no', 'nem', 'нет', '☐', '¨', 'q', '£',
+                         'm']
 
-    for (r, c), val in cells.items():
-        if not val or not isinstance(val, str):
-            continue
+    if not cells: return
+    max_r = max(r for r, c in cells.keys())
+    max_c = max(c for r, c in cells.keys())
 
-        val_lower = val.strip().lower().replace('\n', ' ')
+    for key, keywords in impact_fields.items():
+        found = False
+        for r in range(1, max_r + 1):
+            for c in range(1, max_c + 1):
+                val = cells.get((r, c))
+                if not val or not isinstance(val, str):
+                    continue
 
-        for key, keywords in impact_fields.items():
-            if all(kw in val_lower for kw in keywords):
-                is_checked = False
+                val_lower = val.strip().lower().replace('\n', ' ')
 
-                # 1. Проверяем внутри самой ячейки текста (если напечатано слитно)
-                if any(char in val_lower for char in
-                       checked_symbols + ['[x]', '(x)', '[v]']):
-                    is_checked = True
-                elif any(char in val_lower for char in
-                         unchecked_symbols + ['[ ]', '()']):
+                # Ищем заголовок пункта
+                if all(kw in val_lower for kw in keywords):
                     is_checked = False
-                else:
-                    # 2. Ищем символ в ячейках левее (с запасом на случай объединения)
-                    for offset in range(1, 4):
-                        if c - offset < 1: break
-                        check_val = cells.get((r, c - offset))
-                        if check_val is not None:
-                            cv_str = str(check_val).strip().lower()
-                            if not cv_str:
-                                continue
 
-                            # Если текст длинный, это не галочка, а другой столбец — пропускаем
-                            if len(cv_str) > 10:
-                                continue
+                    # 1. Проверка внутри самой ячейки (если текст и маркер в одной)
+                    if any(m in val_lower for m in
+                           ['☑', '☒', '[x]', '(x)', 'þ', 'ý']):
+                        CR_d['General_information']['Impact_Evaluation'][
+                            key] = 'YES'
+                        found = True;
+                        break
+                    elif any(m in val_lower for m in
+                             ['☐', '¨', '[ ]', '()', '[]']):
+                        CR_d['General_information']['Impact_Evaluation'][
+                            key] = 'NO'
+                        found = True;
+                        break
 
-                            # Проверяем точные совпадения
-                            if cv_str in checked_exact or any(
-                                    sym in cv_str for sym in checked_symbols):
-                                is_checked = True
+                    # 2. Ищем строго вокруг ячейки (влево и вправо)
+                    check_found = False
+                    for offset in [-2, -1, 1, 2]:
+                        if c + offset < 1 or c + offset > max_c: continue
+                        neighbor_val = cells.get((r, c + offset))
+
+                        if neighbor_val is not None:
+                            nv_str = str(neighbor_val).strip().lower()
+                            if not nv_str: continue
+
+                            # Проверяем на точное совпадение из словарей чекбоксов
+                            if nv_str in checked_markers or any(
+                                    sym in nv_str for sym in
+                                    ['☑', '☒', 'þ', 'ý', '✓']):
+                                CR_d['General_information'][
+                                    'Impact_Evaluation'][key] = 'YES'
+                                check_found = True;
                                 break
-                            elif cv_str in unchecked_exact or any(
-                                    sym in cv_str for sym in
-                                    unchecked_symbols):
-                                is_checked = False
+                            elif nv_str in unchecked_markers or any(
+                                    sym in nv_str for sym in ['☐', '¨']):
+                                CR_d['General_information'][
+                                    'Impact_Evaluation'][key] = 'NO'
+                                check_found = True;
                                 break
 
-                            # Умный Fallback: если юзер вбил любой свой короткий символ (1-2 знака)
-                            # и это не ноль/буква 'о' из списка выше, считаем, что чекбокс нажат.
-                            if len(cv_str) <= 2:
-                                is_checked = True
-                                break
+                    if check_found:
+                        found = True;
+                        break
 
-                if is_checked:
-                    CR_d['General_information']['Impact_Evaluation'][
-                        key] = 'YES'
+            if found:
+                continue
 
 
 dict_of_reg_value_FCR = {
