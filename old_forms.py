@@ -95,7 +95,7 @@ def smart_join(massive):
     return '\n'.join(massive)
 
 
-# ОБНОВЛЕННАЯ: Умный поиск чекбоксов, защищенный от ложных срабатываний
+# Максимально всеядная функция поиска галочек
 def parse_impact_evaluation(cells, CR_d):
     impact_fields = {
         'Detailed_Design': ['detailed', 'design'],
@@ -109,6 +109,15 @@ def parse_impact_evaluation(cells, CR_d):
         'Contract_Impact': ['contract', 'szerződés']
     }
 
+    # Базы символов и слов (включая Marlett и Wingdings)
+    checked_exact = ['x', 'v', 'yes', 'igen', '1', '1.0', '+', 'true', 'да',
+                     'a', 'r', 'p', 'ü', 'ý', 'þ', '☑', '☒', '✓', '✔', '√',
+                     'y', '*']
+    unchecked_exact = ['o', '0', '0.0', '-', 'q', 'false', 'no', 'nem', 'нет',
+                       '☐', '¨', '£', 'm', 'n/a', 'na', 'n', 'f']
+    checked_symbols = ['☑', '☒', '✓', '✔', '√', 'þ', 'ý', 'ü']
+    unchecked_symbols = ['☐', '¨']
+
     for (r, c), val in cells.items():
         if not val or not isinstance(val, str):
             continue
@@ -119,15 +128,15 @@ def parse_impact_evaluation(cells, CR_d):
             if all(kw in val_lower for kw in keywords):
                 is_checked = False
 
-                # 1. Проверяем символы прямо внутри текста (если галочка в одной ячейке с текстом)
+                # 1. Проверяем внутри самой ячейки текста (если напечатано слитно)
                 if any(char in val_lower for char in
-                       ['☑', 'þ', 'ý', '[x]', '(x)']):
+                       checked_symbols + ['[x]', '(x)', '[v]']):
                     is_checked = True
-                elif any(
-                        char in val_lower for char in ['☐', '¨', '[ ]', '()']):
+                elif any(char in val_lower for char in
+                         unchecked_symbols + ['[ ]', '()']):
                     is_checked = False
                 else:
-                    # 2. Ищем отдельно стоящий символ слева
+                    # 2. Ищем символ в ячейках левее (с запасом на случай объединения)
                     for offset in range(1, 4):
                         if c - offset < 1: break
                         check_val = cells.get((r, c - offset))
@@ -136,26 +145,25 @@ def parse_impact_evaluation(cells, CR_d):
                             if not cv_str:
                                 continue
 
-                            # ЗАЩИТА: Если длина текста больше 5 символов, значит мы "заехали" на текст соседнего столбца
-                            if len(cv_str) > 5:
-                                break
+                            # Если текст длинный, это не галочка, а другой столбец — пропускаем
+                            if len(cv_str) > 10:
+                                continue
 
-                            # Строгое совпадение с типовыми маркерами галочки
-                            if cv_str in ['x', 'v', 'yes', 'igen', '1', '+',
-                                          'true', 'да', '✓', '✔']:
+                            # Проверяем точные совпадения
+                            if cv_str in checked_exact or any(
+                                    sym in cv_str for sym in checked_symbols):
                                 is_checked = True
                                 break
-                            elif cv_str in ['o', '0', '-', 'q', 'false', 'no',
-                                            'nem', 'нет']:
+                            elif cv_str in unchecked_exact or any(
+                                    sym in cv_str for sym in
+                                    unchecked_symbols):
                                 is_checked = False
                                 break
 
-                            # Поиск уникальных юникод-символов (Wingdings и т.д.)
-                            if any(char in cv_str for char in ['☑', 'þ', 'ý']):
+                            # Умный Fallback: если юзер вбил любой свой короткий символ (1-2 знака)
+                            # и это не ноль/буква 'о' из списка выше, считаем, что чекбокс нажат.
+                            if len(cv_str) <= 2:
                                 is_checked = True
-                                break
-                            elif any(char in cv_str for char in ['☐', '¨']):
-                                is_checked = False
                                 break
 
                 if is_checked:
