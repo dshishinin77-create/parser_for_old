@@ -95,142 +95,6 @@ def smart_join(massive):
     return '\n'.join(massive)
 
 
-def parse_impact_evaluation(cells, CR_d):
-    impact_fields = {
-        'Detailed_Design': ['detailed', 'design'],
-        'Licensing_Documentation': ['licensing', 'documentation'],
-        'Structural_Reliability': ['structural', 'reliability'],
-        'Industrial_Safety': ['industrial', 'safety'],
-        'Ecology_Impact': ['ecology', 'impact'],
-        'Fire_Safety': ['fire', 'safety'],
-        'Schedule_Impact': ['schedule', 'ütemezés'],
-        'Cost_Impact': ['cost', 'impact'],
-        'Contract_Impact': ['contract', 'szerződés']
-    }
-
-    checked_markers = ['x', 'v', 'yes', 'igen', '1', 'да', '✓', '✔', '☑', '☒',
-                       'þ', 'ý', 'r', 'p', '+']
-    unchecked_markers = ['o', '0', '-', 'no', 'nem', 'нет', '☐', '¨', 'q', '£',
-                         'm']
-
-    if not cells: return
-    max_r = max(r for r, c in cells.keys())
-    max_c = max(c for r, c in cells.keys())
-
-    for key, keywords in impact_fields.items():
-        found = False
-        for r in range(1, max_r + 1):
-            for c in range(1, max_c + 1):
-                val = cells.get((r, c))
-                if not val or not isinstance(val, str):
-                    continue
-
-                val_lower = val.strip().lower().replace('\n', ' ')
-
-                if all(kw in val_lower for kw in keywords):
-                    is_checked = False
-
-                    if any(m in val_lower for m in
-                           ['☑', '☒', '[x]', '(x)', 'þ', 'ý']):
-                        CR_d['General_information']['Impact_Evaluation'][
-                            key] = 'YES'
-                        found = True;
-                        break
-                    elif any(m in val_lower for m in
-                             ['☐', '¨', '[ ]', '()', '[]']):
-                        CR_d['General_information']['Impact_Evaluation'][
-                            key] = 'NO'
-                        found = True;
-                        break
-
-                    check_found = False
-                    for offset in [-2, -1, 1, 2]:
-                        if c + offset < 1 or c + offset > max_c: continue
-                        neighbor_val = cells.get((r, c + offset))
-
-                        if neighbor_val is not None:
-                            nv_str = str(neighbor_val).strip().lower()
-                            if not nv_str: continue
-
-                            if nv_str in checked_markers or any(
-                                    sym in nv_str for sym in
-                                    ['☑', '☒', 'þ', 'ý', '✓']):
-                                CR_d['General_information'][
-                                    'Impact_Evaluation'][key] = 'YES'
-                                check_found = True;
-                                break
-                            elif nv_str in unchecked_markers or any(
-                                    sym in nv_str for sym in ['☐', '¨']):
-                                CR_d['General_information'][
-                                    'Impact_Evaluation'][key] = 'NO'
-                                check_found = True;
-                                break
-
-                    if check_found:
-                        found = True;
-                        break
-
-            if found:
-                continue
-
-
-def parse_exposition_and_dd(cells, CR_d):
-    if not cells: return
-    max_r = max(r for r, c in cells.keys())
-    max_c = max(c for r, c in cells.keys())
-
-    for r in range(1, max_r + 1):
-        for c in range(1, max_c + 1):
-            val = cells.get((r, c))
-            if not val or not isinstance(val, str): continue
-
-            val_lower = val.strip().lower().replace('\n', ' ')
-
-            # 1. Извлечение текста
-            if 'exposition of impact' in val_lower or 'hatásértékelés magyarázata' in val_lower:
-                text_found = None
-                for next_r in range(r + 1, min(r + 4, max_r + 1)):
-                    for next_c in range(1, max_c + 1):
-                        check_val = cells.get((next_r, next_c))
-                        if check_val and isinstance(check_val, str):
-                            cv_lower = check_val.strip().lower()
-                            if 'change of dd' not in cv_lower and 'kiviteli terv' not in cv_lower:
-                                text_found = check_val
-                                break
-                    if text_found: break
-
-                if text_found:
-                    CR_d['General_information']['Exposition_of_Impact'][
-                        'Text'] = text_found
-
-            # 2. Поиск ручных галочек
-            if 'change of dd is not required' in val_lower or 'módosítást nem igényel' in val_lower:
-                for offset in range(1, 4):
-                    if c - offset < 1: continue
-                    check_val = cells.get((r, c - offset))
-                    if check_val is not None:
-                        cv_str = str(check_val).strip().lower()
-                        if cv_str in ['x', 'v', 'yes', 'igen', '1', 'да', '✓',
-                                      '✔', '☑', '☒', 'þ', 'ý']:
-                            CR_d['General_information'][
-                                'Exposition_of_Impact'][
-                                'Change_of_DD_not_required'] = 'YES'
-                            break
-
-            if 'change of dd is required' in val_lower or 'módosítása szükséges' in val_lower:
-                for offset in range(1, 4):
-                    if c - offset < 1: continue
-                    check_val = cells.get((r, c - offset))
-                    if check_val is not None:
-                        cv_str = str(check_val).strip().lower()
-                        if cv_str in ['x', 'v', 'yes', 'igen', '1', 'да', '✓',
-                                      '✔', '☑', '☒', 'þ', 'ý']:
-                            CR_d['General_information'][
-                                'Exposition_of_Impact'][
-                                'Change_of_DD_is_required'] = 'YES'
-                            break
-
-
 dict_of_reg_value_FCR = {
     'CR_number': [['(change.*request|registr|bejegyz)'], ['init']],
     'Reg_date': ['registr', 'dat'],
@@ -333,22 +197,6 @@ def main_func(table_name):
                 'TDD_influece': None, 'Document_type': None, 'CR_reason': None,
                 'Descr_tech_sol': None, 'NSC_category': None,
                 'Impact_1_2_3': None,
-                'Impact_Evaluation': {
-                    'Detailed_Design': 'NO',
-                    'Licensing_Documentation': 'NO',
-                    'Structural_Reliability': 'NO',
-                    'Industrial_Safety': 'NO',
-                    'Ecology_Impact': 'NO',
-                    'Fire_Safety': 'NO',
-                    'Schedule_Impact': 'NO',
-                    'Cost_Impact': 'NO',
-                    'Contract_Impact': 'NO'
-                },
-                'Exposition_of_Impact': {
-                    'Text': None,
-                    'Change_of_DD_not_required': 'NO',
-                    'Change_of_DD_is_required': 'NO'
-                },
                 'Method_CR': None, 'Comment': None,
                 'Reg_date': None,
                 'Constr_facility': None, 'Reason_code': None,
@@ -357,9 +205,6 @@ def main_func(table_name):
             'Supp_descr_docs': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}
         }
-
-        parse_impact_evaluation(cells, CR_d)
-        parse_exposition_and_dd(cells, CR_d)
 
         section = 'General'
         prev_section = 'General'
@@ -670,22 +515,6 @@ def main_func(table_name):
                 'Method_justif': None, 'Change_equipment': None,
                 'Reason_code': None,
                 'Descr_tech_sol': None, 'Final_status': None,
-                'Impact_Evaluation': {
-                    'Detailed_Design': 'NO',
-                    'Licensing_Documentation': 'NO',
-                    'Structural_Reliability': 'NO',
-                    'Industrial_Safety': 'NO',
-                    'Ecology_Impact': 'NO',
-                    'Fire_Safety': 'NO',
-                    'Schedule_Impact': 'NO',
-                    'Cost_Impact': 'NO',
-                    'Contract_Impact': 'NO'
-                },
-                'Exposition_of_Impact': {
-                    'Text': None,
-                    'Change_of_DD_not_required': 'NO',
-                    'Change_of_DD_is_required': 'NO'
-                },
                 'Evaluation': {
                     'Material_eq': None, 'REPLACE?': None,
                     'Reject_comment': None, 'Refuse_comment': None,
@@ -698,9 +527,6 @@ def main_func(table_name):
             'TDD_sets': {},
             'SSC': {}
         }
-
-        parse_impact_evaluation(cells, CR_d)
-        parse_exposition_and_dd(cells, CR_d)
 
         section = 'General'
         prev_section = 'General'
@@ -1070,22 +896,6 @@ def main_func(table_name):
             'General_information': {
                 'CR_number': None, 'Reg_date': None,
                 'Initiator': None, 'Organization': None,
-                'Impact_Evaluation': {
-                    'Detailed_Design': 'NO',
-                    'Licensing_Documentation': 'NO',
-                    'Structural_Reliability': 'NO',
-                    'Industrial_Safety': 'NO',
-                    'Ecology_Impact': 'NO',
-                    'Fire_Safety': 'NO',
-                    'Schedule_Impact': 'NO',
-                    'Cost_Impact': 'NO',
-                    'Contract_Impact': 'NO'
-                },
-                'Exposition_of_Impact': {
-                    'Text': None,
-                    'Change_of_DD_not_required': 'NO',
-                    'Change_of_DD_is_required': 'NO'
-                },
                 'Constr_facility': None,
                 'Reason_code': None, 'CR_reason': None, 'Descr_tech_sol': None,
                 'Document_type': None, 'Change_type': None
@@ -1093,9 +903,6 @@ def main_func(table_name):
             'Configur': {}, 'TDD': {}, 'SSC': {},
             'List of documents proposed change': {}, 'Supp_descr_docs': {}
         }
-
-        parse_impact_evaluation(cells, CR_d)
-        parse_exposition_and_dd(cells, CR_d)
 
         section = 'General'
         prev_section = 'General'
