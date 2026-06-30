@@ -108,56 +108,61 @@ def parse_impact_evaluation(cells, CR_d):
         'Contract_Impact': ['contract', 'szerződés']
     }
 
-    print("\n" + "=" * 60)
-    print("🔍 [ДИАГНОСТИКА ЧЕКБОКСОВ] ПОЖАЛУЙСТА, ПРИШЛИТЕ ЭТОТ ТЕКСТ 🔍")
-    print("=" * 60)
+    # Строгие списки значений для ячеек
+    checked_exact = ['x', 'v', 'yes', 'igen', '1', '1.0', '+', 'true', 'да']
+    unchecked_exact = ['o', '0', '0.0', '-', 'q', 'false', 'no', 'nem', 'нет']
+    checked_symbols = ['☑', '☒', '✓', '✔', '√', 'þ', 'ý']  # Убрали 'ü'
+    unchecked_symbols = ['☐', '¨']
 
-    for key, keywords in impact_fields.items():
-        found = False
-        for (r, c), val in list(cells.items()):
-            if not val or not isinstance(val, str): continue
-            val_lower = val.strip().lower().replace('\n', ' ')
+    for (r, c), val in cells.items():
+        if not val or not isinstance(val, str):
+            continue
 
+        val_lower = val.strip().lower().replace('\n', ' ')
+
+        for key, keywords in impact_fields.items():
             if all(kw in val_lower for kw in keywords):
-                print(f"\n[{key}] (строка {r}, столбец {c})")
-                print(f"  Текст: {repr(val)}")
-
                 is_checked = False
-                checked_symbols = ['☑', '☒', '✓', '✔', '√', 'þ', 'ý', 'ü', 'x',
-                                   'v', '1']
 
-                # Проверка внутри текста
+                # 1. Проверяем наличие спецсимвола галочки внутри текста ячейки
                 if any(char in val_lower for char in
-                       ['☑', '☒', '[x]', '(x)', 'þ', 'ý', '✓', 'ü']):
+                       checked_symbols + ['[x]', '(x)', '[v]']):
                     is_checked = True
+                elif any(char in val_lower for char in
+                         unchecked_symbols + ['[ ]', '()']):
+                    is_checked = False
                 else:
-                    # Сканируем 5 ячеек слева
-                    for offset in range(1, 6):
-                        c_check = c - offset
-                        if c_check < 1: continue
-                        n_val = cells.get((r, c_check))
-                        print(
-                            f"  Слева [-{offset}] (столбец {c_check}): {repr(n_val)}")
+                    # 2. Ищем значение в ячейках слева от текста (работает с Cell Link)
+                    for offset in range(1, 4):
+                        if c - offset < 1: break
+                        check_val = cells.get((r, c - offset))
+                        if check_val is not None:
+                            cv_str = str(check_val).strip().lower()
+                            if not cv_str:
+                                continue
 
-                        if n_val is not None:
-                            nv_str = str(n_val).strip().lower()
-                            if nv_str and len(nv_str) <= 3:
-                                if nv_str in checked_symbols or any(
-                                        sym in nv_str for sym in
-                                        checked_symbols):
-                                    is_checked = True
+                            if len(cv_str) > 10:
+                                continue
 
-                CR_d['General_information']['Impact_Evaluation'][
-                    key] = 'YES' if is_checked else 'NO'
-                print(
-                    f"  --> РЕЗУЛЬТАТ ПАРСЕРА: {'YES' if is_checked else 'NO'}")
-                found = True
-                break
+                            # Проверяем точные совпадения текста или TRUE/FALSE из Cell Link
+                            if cv_str in checked_exact or any(
+                                    sym in cv_str for sym in checked_symbols):
+                                is_checked = True
+                                break
+                            elif cv_str in unchecked_exact or any(
+                                    sym in cv_str for sym in
+                                    unchecked_symbols):
+                                is_checked = False
+                                break
 
-        if not found:
-            print(f"\n[{key}] --- ЗАГОЛОВОК НЕ НАЙДЕН В ФАЙЛЕ ---")
+                            # Если кто-то ввел любой одиночный символ
+                            if len(cv_str) <= 2:
+                                is_checked = True
+                                break
 
-    print("=" * 60 + "\n")
+                if is_checked:
+                    CR_d['General_information']['Impact_Evaluation'][
+                        key] = 'YES'
 
 
 dict_of_reg_value_FCR = {
