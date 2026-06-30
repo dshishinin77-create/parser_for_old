@@ -108,61 +108,129 @@ def parse_impact_evaluation(cells, CR_d):
         'Contract_Impact': ['contract', 'szerződés']
     }
 
-    # Строгие списки значений для ячеек
-    checked_exact = ['x', 'v', 'yes', 'igen', '1', '1.0', '+', 'true', 'да']
-    unchecked_exact = ['o', '0', '0.0', '-', 'q', 'false', 'no', 'nem', 'нет']
-    checked_symbols = ['☑', '☒', '✓', '✔', '√', 'þ', 'ý']  # Убрали 'ü'
-    unchecked_symbols = ['☐', '¨']
+    checked_markers = ['x', 'v', 'yes', 'igen', '1', 'да', '✓', '✔', '☑', '☒',
+                       'þ', 'ý', 'r', 'p', '+']
+    unchecked_markers = ['o', '0', '-', 'no', 'nem', 'нет', '☐', '¨', 'q', '£',
+                         'm']
 
-    for (r, c), val in cells.items():
-        if not val or not isinstance(val, str):
-            continue
+    if not cells: return
+    max_r = max(r for r, c in cells.keys())
+    max_c = max(c for r, c in cells.keys())
 
-        val_lower = val.strip().lower().replace('\n', ' ')
+    for key, keywords in impact_fields.items():
+        found = False
+        for r in range(1, max_r + 1):
+            for c in range(1, max_c + 1):
+                val = cells.get((r, c))
+                if not val or not isinstance(val, str):
+                    continue
 
-        for key, keywords in impact_fields.items():
-            if all(kw in val_lower for kw in keywords):
-                is_checked = False
+                val_lower = val.strip().lower().replace('\n', ' ')
 
-                # 1. Проверяем наличие спецсимвола галочки внутри текста ячейки
-                if any(char in val_lower for char in
-                       checked_symbols + ['[x]', '(x)', '[v]']):
-                    is_checked = True
-                elif any(char in val_lower for char in
-                         unchecked_symbols + ['[ ]', '()']):
+                if all(kw in val_lower for kw in keywords):
                     is_checked = False
-                else:
-                    # 2. Ищем значение в ячейках слева от текста (работает с Cell Link)
-                    for offset in range(1, 4):
-                        if c - offset < 1: break
-                        check_val = cells.get((r, c - offset))
-                        if check_val is not None:
-                            cv_str = str(check_val).strip().lower()
-                            if not cv_str:
-                                continue
 
-                            if len(cv_str) > 10:
-                                continue
+                    if any(m in val_lower for m in
+                           ['☑', '☒', '[x]', '(x)', 'þ', 'ý']):
+                        CR_d['General_information']['Impact_Evaluation'][
+                            key] = 'YES'
+                        found = True;
+                        break
+                    elif any(m in val_lower for m in
+                             ['☐', '¨', '[ ]', '()', '[]']):
+                        CR_d['General_information']['Impact_Evaluation'][
+                            key] = 'NO'
+                        found = True;
+                        break
 
-                            # Проверяем точные совпадения текста или TRUE/FALSE из Cell Link
-                            if cv_str in checked_exact or any(
-                                    sym in cv_str for sym in checked_symbols):
-                                is_checked = True
+                    check_found = False
+                    for offset in [-2, -1, 1, 2]:
+                        if c + offset < 1 or c + offset > max_c: continue
+                        neighbor_val = cells.get((r, c + offset))
+
+                        if neighbor_val is not None:
+                            nv_str = str(neighbor_val).strip().lower()
+                            if not nv_str: continue
+
+                            if nv_str in checked_markers or any(
+                                    sym in nv_str for sym in
+                                    ['☑', '☒', 'þ', 'ý', '✓']):
+                                CR_d['General_information'][
+                                    'Impact_Evaluation'][key] = 'YES'
+                                check_found = True;
                                 break
-                            elif cv_str in unchecked_exact or any(
-                                    sym in cv_str for sym in
-                                    unchecked_symbols):
-                                is_checked = False
+                            elif nv_str in unchecked_markers or any(
+                                    sym in nv_str for sym in ['☐', '¨']):
+                                CR_d['General_information'][
+                                    'Impact_Evaluation'][key] = 'NO'
+                                check_found = True;
                                 break
 
-                            # Если кто-то ввел любой одиночный символ
-                            if len(cv_str) <= 2:
-                                is_checked = True
-                                break
+                    if check_found:
+                        found = True;
+                        break
 
-                if is_checked:
-                    CR_d['General_information']['Impact_Evaluation'][
-                        key] = 'YES'
+            if found:
+                continue
+
+
+# НОВАЯ ФУНКЦИЯ для "Exposition of Impact"
+def parse_exposition_and_dd(cells, CR_d):
+    if not cells: return
+    max_r = max(r for r, c in cells.keys())
+    max_c = max(c for r, c in cells.keys())
+
+    for r in range(1, max_r + 1):
+        for c in range(1, max_c + 1):
+            val = cells.get((r, c))
+            if not val or not isinstance(val, str): continue
+
+            val_lower = val.strip().lower().replace('\n', ' ')
+
+            # 1. Извлечение текста (ищем под заголовком)
+            if 'exposition of impact' in val_lower or 'hatásértékelés magyarázata' in val_lower:
+                text_found = None
+                for next_r in range(r + 1, min(r + 4, max_r + 1)):
+                    for next_c in range(1, max_c + 1):
+                        check_val = cells.get((next_r, next_c))
+                        if check_val and isinstance(check_val, str):
+                            cv_lower = check_val.strip().lower()
+                            # Игнорируем текст из чекбоксов, чтобы не взять его вместо пустого текстового поля
+                            if 'change of dd' not in cv_lower and 'kiviteli terv' not in cv_lower:
+                                text_found = check_val
+                                break
+                    if text_found: break
+
+                if text_found:
+                    CR_d['General_information']['Exposition_of_Impact'][
+                        'Text'] = text_found
+
+            # 2. Поиск ручных галочек (если их нет, останется NO по умолчанию)
+            if 'change of dd is not required' in val_lower or 'módosítást nem igényel' in val_lower:
+                for offset in range(1, 4):
+                    if c - offset < 1: continue
+                    check_val = cells.get((r, c - offset))
+                    if check_val is not None:
+                        cv_str = str(check_val).strip().lower()
+                        if cv_str in ['x', 'v', 'yes', 'igen', '1', 'да', '✓',
+                                      '✔', '☑', '☒', 'þ', 'ý']:
+                            CR_d['General_information'][
+                                'Exposition_of_Impact'][
+                                'Change_of_DD_not_required'] = 'YES'
+                            break
+
+            if 'change of dd is required' in val_lower or 'módosítása szükséges' in val_lower:
+                for offset in range(1, 4):
+                    if c - offset < 1: continue
+                    check_val = cells.get((r, c - offset))
+                    if check_val is not None:
+                        cv_str = str(check_val).strip().lower()
+                        if cv_str in ['x', 'v', 'yes', 'igen', '1', 'да', '✓',
+                                      '✔', '☑', '☒', 'þ', 'ý']:
+                            CR_d['General_information'][
+                                'Exposition_of_Impact'][
+                                'Change_of_DD_is_required'] = 'YES'
+                            break
 
 
 dict_of_reg_value_FCR = {
@@ -297,6 +365,11 @@ def main_func(table_name):
                     'Cost_Impact': 'NO',
                     'Contract_Impact': 'NO'
                 },
+                'Exposition_of_Impact': {
+                    'Text': None,
+                    'Change_of_DD_not_required': 'NO',
+                    'Change_of_DD_is_required': 'NO'
+                },
                 'Method_CR': None, 'Comment': None, 'Contract': None,
                 'Impact_cost': None, 'Schedule': None,
                 'Comment_nont': None, 'Reg_date': None,
@@ -309,6 +382,7 @@ def main_func(table_name):
         }
 
         parse_impact_evaluation(cells, CR_d)
+        parse_exposition_and_dd(cells, CR_d)
 
         section = 'General'
         prev_section = 'General'
@@ -676,6 +750,11 @@ def main_func(table_name):
                     'Cost_Impact': 'NO',
                     'Contract_Impact': 'NO'
                 },
+                'Exposition_of_Impact': {
+                    'Text': None,
+                    'Change_of_DD_not_required': 'NO',
+                    'Change_of_DD_is_required': 'NO'
+                },
                 'Evaluation': {
                     'Material_eq': None, 'REPLACE?': None,
                     'Reject_comment': None, 'Refuse_comment': None,
@@ -692,6 +771,7 @@ def main_func(table_name):
         }
 
         parse_impact_evaluation(cells, CR_d)
+        parse_exposition_and_dd(cells, CR_d)
 
         section = 'General'
         prev_section = 'General'
@@ -1090,6 +1170,11 @@ def main_func(table_name):
                     'Cost_Impact': 'NO',
                     'Contract_Impact': 'NO'
                 },
+                'Exposition_of_Impact': {
+                    'Text': None,
+                    'Change_of_DD_not_required': 'NO',
+                    'Change_of_DD_is_required': 'NO'
+                },
                 'CR_coordinator': None, 'CR_number_int': None,
                 'Contract': None,
                 'Impact_cost': None, 'Schedule': None,
@@ -1103,6 +1188,7 @@ def main_func(table_name):
         }
 
         parse_impact_evaluation(cells, CR_d)
+        parse_exposition_and_dd(cells, CR_d)
 
         section = 'General'
         prev_section = 'General'
